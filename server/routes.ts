@@ -95,7 +95,21 @@ function parseUrls(scrapezyResult: any): Array<{url: string, name: string, addre
     if (typeof resultText === 'string') {
       try {
         const parsed = JSON.parse(resultText);
-        if (Array.isArray(parsed)) {
+        
+        // Check for apartment_listings or apartments key (Scrapezy format)
+        const apartmentData = parsed.apartment_listings || parsed.apartments;
+        if (apartmentData && Array.isArray(apartmentData)) {
+          properties = apartmentData.filter(item => 
+            item && 
+            typeof item === 'object' && 
+            item.url && 
+            typeof item.url === 'string' &&
+            item.url.includes('apartments.com') &&
+            item.url.startsWith('http')
+          );
+        }
+        // Also check if it's a direct array
+        else if (Array.isArray(parsed)) {
           properties = parsed.filter(item => 
             item && 
             typeof item === 'object' && 
@@ -119,14 +133,26 @@ function parseUrls(scrapezyResult: any): Array<{url: string, name: string, addre
           }
         }
       }
-    } else if (Array.isArray(resultText)) {
-      properties = resultText.filter(item => 
-        item && 
-        typeof item === 'object' && 
-        item.url && 
-        typeof item.url === 'string' &&
-        item.url.includes('apartments.com')
-      );
+    } else if (typeof resultText === 'object' && resultText !== null) {
+      // Handle object response (already parsed)
+      const apartmentDataObj = resultText.apartment_listings || resultText.apartments;
+      if (apartmentDataObj && Array.isArray(apartmentDataObj)) {
+        properties = apartmentDataObj.filter(item => 
+          item && 
+          typeof item === 'object' && 
+          item.url && 
+          typeof item.url === 'string' &&
+          item.url.includes('apartments.com')
+        );
+      } else if (Array.isArray(resultText)) {
+        properties = resultText.filter(item => 
+          item && 
+          typeof item === 'object' && 
+          item.url && 
+          typeof item.url === 'string' &&
+          item.url.includes('apartments.com')
+        );
+      }
     }
   } catch (error) {
     console.error('Error parsing Scrapezy result:', error);
@@ -216,10 +242,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all competitor properties
+  // Get all competitor properties (using scraped data instead of legacy competitors)
   app.get("/api/competitors", async (req, res) => {
     try {
-      const competitors = await storage.getAllCompetitorProperties();
+      // Get all scraped competitor properties using proper storage method
+      const scrapedCompetitors = await storage.getAllScrapedCompetitors();
+      
+      // Convert scraped properties to competitor format for UI compatibility
+      const competitors = scrapedCompetitors.map(scrapedProp => ({
+        id: scrapedProp.id,
+        name: scrapedProp.name,
+        address: scrapedProp.address,
+        distance: scrapedProp.distance || "0.5", // Default distance if null
+        priceRange: "$1,200-$1,800", // Placeholder - would come from Scrapezy in future
+        totalUnits: 100, // Placeholder - would come from Scrapezy in future  
+        builtYear: 2015, // Placeholder - would come from Scrapezy in future
+        amenities: ["Pool", "Gym", "Parking"], // Placeholder - would come from Scrapezy in future
+        matchScore: scrapedProp.matchScore || "75.0", // Use scraped match score or default
+        vacancyRate: "8.5", // Placeholder - would come from Scrapezy in future
+        createdAt: scrapedProp.createdAt
+      }));
+
+      console.log(`Returning ${competitors.length} scraped properties as competitors`);
       res.json(competitors);
     } catch (error) {
       console.error("Error fetching competitors:", error);
@@ -235,7 +279,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "IDs must be an array" });
       }
 
-      const competitors = await storage.getSelectedCompetitorProperties(ids);
+      // Use scraped properties instead of legacy competitors
+      const scrapedProperties = await storage.getSelectedScrapedProperties(ids);
+      
+      // Convert to competitor format for UI compatibility
+      const competitors = scrapedProperties.map(scrapedProp => ({
+        id: scrapedProp.id,
+        name: scrapedProp.name,
+        address: scrapedProp.address,
+        distance: scrapedProp.distance || "0.5",
+        priceRange: "$1,200-$1,800", // Placeholder
+        totalUnits: 100, // Placeholder  
+        builtYear: 2015, // Placeholder
+        amenities: ["Pool", "Gym", "Parking"], // Placeholder
+        matchScore: scrapedProp.matchScore || "75.0",
+        vacancyRate: "8.5", // Placeholder
+        createdAt: scrapedProp.createdAt
+      }));
+
       res.json(competitors);
     } catch (error) {
       console.error("Error fetching selected competitors:", error);
