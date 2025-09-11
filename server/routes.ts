@@ -39,7 +39,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }`;
 
       const aiResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using gpt-4o which is widely available
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" }
       });
@@ -196,7 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }`;
 
       const aiResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using gpt-4o which is widely available
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" }
       });
