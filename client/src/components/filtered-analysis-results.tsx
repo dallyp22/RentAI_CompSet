@@ -14,7 +14,8 @@ export default function FilteredAnalysisResults({
   analysis, 
   isLoading = false 
 }: FilteredAnalysisResultsProps) {
-  if (isLoading) {
+  // Handle loading state or missing analysis data
+  if (isLoading || !analysis) {
     return (
       <div className="flex-1 space-y-6" data-testid="analysis-loading">
         <Card>

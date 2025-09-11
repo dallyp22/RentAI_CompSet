@@ -167,7 +167,7 @@ export class MemStorage implements IStorage {
         address: "100 Main St, Austin, TX",
         url: "https://example.com/property1",
         distance: "0.5",
-        isSubjectProperty: true,
+        isSubjectProperty: false,
         matchScore: "95.0",
         createdAt: new Date()
       },
