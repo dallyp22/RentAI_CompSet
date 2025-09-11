@@ -20,6 +20,15 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
+// Workflow State interface
+export interface WorkflowState {
+  propertyId: string;
+  selectedCompetitorIds: string[];
+  scrapingJobId?: string;
+  filterCriteria?: any;
+  currentStage: 'input' | 'summarize' | 'analyze' | 'optimize';
+}
+
 export interface IStorage {
   // Properties
   createProperty(property: InsertProperty): Promise<Property>;
@@ -39,6 +48,7 @@ export interface IStorage {
   createPropertyUnit(unit: InsertPropertyUnit): Promise<PropertyUnit>;
   getPropertyUnits(propertyId: string): Promise<PropertyUnit[]>;
   updatePropertyUnit(id: string, updates: Partial<PropertyUnit>): Promise<PropertyUnit | undefined>;
+  clearPropertyUnits(propertyId: string): Promise<void>;
   
   // Optimization Reports
   createOptimizationReport(report: InsertOptimizationReport): Promise<OptimizationReport>;
@@ -70,6 +80,10 @@ export interface IStorage {
   // Filtered analysis methods
   getFilteredScrapedUnits(criteria: FilterCriteria): Promise<ScrapedUnit[]>;
   generateFilteredAnalysis(propertyId: string, criteria: FilterCriteria): Promise<FilteredAnalysis>;
+  
+  // Workflow State Management
+  getWorkflowState(propertyId: string): Promise<WorkflowState | null>;
+  saveWorkflowState(state: WorkflowState): Promise<WorkflowState>;
 }
 
 export class MemStorage implements IStorage {
@@ -81,6 +95,7 @@ export class MemStorage implements IStorage {
   private scrapingJobs: Map<string, ScrapingJob>;
   private scrapedProperties: Map<string, ScrapedProperty>;
   private scrapedUnits: Map<string, ScrapedUnit>;
+  private workflowStates: Map<string, WorkflowState>;
 
   constructor() {
     this.properties = new Map();
@@ -91,6 +106,7 @@ export class MemStorage implements IStorage {
     this.scrapingJobs = new Map();
     this.scrapedProperties = new Map();
     this.scrapedUnits = new Map();
+    this.workflowStates = new Map();
     this.seedData();
   }
 
@@ -251,6 +267,15 @@ export class MemStorage implements IStorage {
     const updatedUnit = { ...unit, ...updates };
     this.propertyUnits.set(id, updatedUnit);
     return updatedUnit;
+  }
+
+  async clearPropertyUnits(propertyId: string): Promise<void> {
+    const unitsToDelete = Array.from(this.propertyUnits.keys()).filter(id => {
+      const unit = this.propertyUnits.get(id);
+      return unit && unit.propertyId === propertyId;
+    });
+    
+    unitsToDelete.forEach(id => this.propertyUnits.delete(id));
   }
 
   async createOptimizationReport(insertReport: InsertOptimizationReport): Promise<OptimizationReport> {
@@ -473,6 +498,16 @@ export class MemStorage implements IStorage {
       amenityScore: Math.min(100, Math.max(0, pricingPowerScore - 10)), // Simplified
       pricePerSqFt: Math.round(pricePerSqFt * 100) / 100
     };
+  }
+
+  // Workflow State Management
+  async getWorkflowState(propertyId: string): Promise<WorkflowState | null> {
+    return this.workflowStates.get(propertyId) || null;
+  }
+
+  async saveWorkflowState(state: WorkflowState): Promise<WorkflowState> {
+    this.workflowStates.set(state.propertyId, state);
+    return state;
   }
 }
 

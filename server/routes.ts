@@ -521,12 +521,15 @@ Please provide your analysis in this exact JSON format:
         }
       }
       
-      // If no scraped units, fall back to property units
-      let units = await storage.getPropertyUnits(propertyId);
+      // Always sync from scraped units when available
+      let units = [];
       
-      // If we have scraped units, create PropertyUnits from them if they don't exist
-      if (scrapedUnits.length > 0 && units.length === 0) {
-        console.log(`Creating ${scrapedUnits.length} PropertyUnits from scraped data for optimization`);
+      // If we have scraped units, always sync them (not just when units.length === 0)
+      if (scrapedUnits.length > 0) {
+        console.log(`Syncing ${scrapedUnits.length} scraped units for optimization`);
+        // Clear existing PropertyUnits
+        await storage.clearPropertyUnits(propertyId);
+        // Create new PropertyUnits from ALL scraped units
         units = [];
         for (const scrapedUnit of scrapedUnits) {
           const unit = await storage.createPropertyUnit({
@@ -538,6 +541,9 @@ Please provide your analysis in this exact JSON format:
           });
           units.push(unit);
         }
+      } else {
+        // Fall back to existing PropertyUnits only if no scraped data
+        units = await storage.getPropertyUnits(propertyId);
       }
       
       if (!property || units.length === 0) {
@@ -1624,6 +1630,91 @@ Please provide your analysis in this exact JSON format:
     } catch (error) {
       console.error("Error matching property:", error);
       res.status(500).json({ message: "Failed to match property" });
+    }
+  });
+
+  // Workflow State Management
+  app.get("/api/workflow/:propertyId", async (req, res) => {
+    try {
+      const propertyId = req.params.propertyId;
+      const state = await storage.getWorkflowState(propertyId);
+      
+      if (state) {
+        res.json(state);
+      } else {
+        res.status(404).json({ message: "Workflow state not found" });
+      }
+    } catch (error) {
+      console.error("Error fetching workflow state:", error);
+      res.status(500).json({ message: "Failed to fetch workflow state" });
+    }
+  });
+
+  app.put("/api/workflow/:propertyId", async (req, res) => {
+    try {
+      const propertyId = req.params.propertyId;
+      const state = {
+        propertyId,
+        ...req.body
+      };
+      
+      const savedState = await storage.saveWorkflowState(state);
+      res.json(savedState);
+    } catch (error) {
+      console.error("Error saving workflow state:", error);
+      res.status(500).json({ message: "Failed to save workflow state" });
+    }
+  });
+
+  // Force sync units from scraped data
+  app.post("/api/properties/:id/sync-units", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      
+      // Find the subject scraped property
+      let subjectProperty = null;
+      let scrapedUnits: ScrapedUnit[] = [];
+      
+      const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId);
+      if (scrapingJobs.length > 0) {
+        for (const job of scrapingJobs) {
+          const scrapedProperties = await storage.getScrapedPropertiesByJob(job.id);
+          const subject = scrapedProperties.find(p => p.isSubjectProperty === true);
+          if (subject) {
+            subjectProperty = subject;
+            scrapedUnits = await storage.getScrapedUnitsByProperty(subject.id);
+            break;
+          }
+        }
+      }
+      
+      if (scrapedUnits.length === 0) {
+        return res.status(404).json({ message: "No scraped units to sync" });
+      }
+      
+      // Clear existing PropertyUnits and recreate from scraped data
+      await storage.clearPropertyUnits(propertyId);
+      const units = [];
+      
+      for (const scrapedUnit of scrapedUnits) {
+        const unit = await storage.createPropertyUnit({
+          propertyId,
+          unitNumber: scrapedUnit.unitNumber || `Unit-${scrapedUnit.id.substring(0, 6)}`,
+          unitType: scrapedUnit.unitType,
+          currentRent: scrapedUnit.rent || "0",
+          status: scrapedUnit.status || "occupied"
+        });
+        units.push(unit);
+      }
+      
+      res.json({ 
+        message: `Successfully synced ${units.length} units from scraped data`,
+        unitsCount: units.length,
+        units: units
+      });
+    } catch (error) {
+      console.error("Error syncing units:", error);
+      res.status(500).json({ message: "Failed to sync units" });
     }
   });
 
