@@ -894,12 +894,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       }
 
-      // Calculate data for subject property
-      const subjectData = await calculateVacancyData(subjectProperty);
+      // Helper function to get individual units for a property
+      const getPropertyUnits = async (property: any) => {
+        const units = await storage.getScrapedUnitsByProperty(property.id);
+        return units.map(unit => ({
+          unitNumber: unit.unitNumber || 'N/A',
+          unitType: unit.unitType,
+          bedrooms: unit.bedrooms || 0,
+          bathrooms: unit.bathrooms || '0',
+          squareFootage: unit.squareFootage || 0,
+          rent: unit.rent || '0',
+          availabilityDate: unit.availabilityDate || 'Contact for availability',
+          status: unit.status || 'unknown'
+        }));
+      };
 
-      // Calculate data for competitors
+      // Calculate data for subject property with units
+      const subjectData = await calculateVacancyData(subjectProperty);
+      const subjectUnits = await getPropertyUnits(subjectProperty);
+
+      // Calculate data for competitors with units
       const competitorData = await Promise.all(
-        competitorProperties.map(comp => calculateVacancyData(comp))
+        competitorProperties.map(async comp => {
+          const vacancyData = await calculateVacancyData(comp);
+          const units = await getPropertyUnits(comp);
+          return {
+            ...vacancyData,
+            units
+          };
+        })
       );
 
       // Calculate market insights
@@ -929,7 +952,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : `${Math.abs(vacancyDifference).toFixed(1)}% below market average`;
 
       const response = {
-        subjectProperty: subjectData,
+        subjectProperty: {
+          ...subjectData,
+          units: subjectUnits
+        },
         competitors: competitorData,
         marketInsights: {
           subjectVsMarket,

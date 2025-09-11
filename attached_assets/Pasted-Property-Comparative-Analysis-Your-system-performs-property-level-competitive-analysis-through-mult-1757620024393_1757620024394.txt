@@ -1,0 +1,104 @@
+Property Comparative Analysis
+
+Your system performs property-level competitive analysis through multiple approaches:
+
+### 1. **Property vs Competition Analysis** (`get_property_vs_competition_analysis`)
+
+This analysis compares your properties against competitor properties by:
+
+**Data Sources:**
+- Your units: `staging.our_units` table
+- Competitor data: Live competition table (configurable)
+
+**Key Metrics Generated:**
+- **Overview by unit type**: Groups units by bedroom count and compares average rents
+- **Rent comparison**: Shows your average rent vs competitor average rent by bedroom type
+- **Performance metrics**: 
+  - Total revenue opportunity
+  - Units below market by different thresholds
+  - Average rent gaps
+
+**Competitor Matching Logic:**
+```sql
+-- Matches competitors based on:
+- Bedroom count mapping (Studio, 1 Bed, 2 Beds, etc.)
+- Price range filtering (70%-130% of your advertised rent)
+- Positive rent and square footage values
+```
+
+### 2. **Market Position Analytics** (`get_market_position_analytics`)
+
+Provides portfolio-wide competitive positioning:
+- **Market position distribution**: Categorizes units as ABOVE_MARKET, AT_MARKET, BELOW_MARKET
+- **Pricing opportunities**: Identifies revenue potential across the portfolio
+- **Performance benchmarking**: Compares your portfolio against market standards
+
+### 3. **Property Market Trends** (`get_property_market_trends`)
+
+Analyzes market positioning and competitor landscape:
+- **Positioning data**: Market position by unit type
+- **Competitor analysis**: Identifies truly comparable competitor properties with similarity scores
+- **Similarity scoring**: Uses a weighted algorithm combining price and square footage differences
+
+## Unit Analysis
+
+Your unit-level analysis is more granular and focuses on individual unit optimization:
+
+### 1. **Unit Competitor Pairs System**
+
+The core of your unit analysis relies on the `unit_competitor_pairs` table:
+
+**Similarity Score Algorithm:**
+```sql
+-- Weighted scoring system (max 100 points):
+CASE WHEN ABS(sqft_delta) <= 15% THEN 40 points ELSE 0 END +  -- Square footage match (40%)
+CASE WHEN bed = bed THEN 30 points ELSE 0 END +               -- Bedroom match (30%)
+CASE WHEN bath = bath THEN 20 points ELSE 0 END +             -- Bathroom match (20%)
+CASE WHEN different_property THEN 10 points ELSE 0 END        -- Cross-property bonus (10%)
+```
+
+**Matching Criteria:**
+- **Required**: Exact bedroom match
+- **Required**: Exact bathroom match  
+- **Required**: Square footage within ±15%
+- **Minimum similarity score**: 50 points
+- **Top comparables**: Ranked by similarity score, then by square footage difference, then by price gap
+
+### 2. **Property Unit Analysis** (`get_property_unit_analysis`)
+
+For each unit in a property, this generates:
+
+**Competitive Metrics:**
+- `comparable_count`: Number of matching competitor units
+- `avg_comp_rent`: Average competitor rent
+- `min_comp_rent` / `max_comp_rent`: Rent range
+- `available_comps`: Number of available competitor units
+
+**Market Position Calculations:**
+- `rent_premium_pct`: Your rent vs competitor average (percentage)
+- `potential_rent_increase`: Dollar amount you could potentially increase
+- `annual_opportunity`: Annualized revenue opportunity
+- `market_position`: Categorized as ABOVE_MARKET, BELOW_MARKET, AT_MARKET, or NO_DATA
+
+### 3. **Unit Snapshot View**
+
+The `mart.unit_snapshot` view enriches each unit with:
+- **Market positioning**: Premium/discount percentages
+- **Pricing urgency**: IMMEDIATE (vacant), HIGH (≤30 days to lease end), MEDIUM (≤60 days), LOW (>60 days)
+- **Unit categorization**: Unit type (STUDIO, 1BR, 2BR, etc.) and size categories
+- **Revenue potential**: Annual revenue calculations
+
+### 4. **Pricing Optimization Integration**
+
+The unit analysis feeds into your pricing optimization engine (`PricingOptimizer`):
+
+**Strategy Implementation:**
+- **Revenue Focus**: 1.05x market rate (38 days to lease)
+- **Balanced**: 1.00x market rate (30 days to lease) 
+- **Quick Lease**: 0.95x market rate (23 days to lease)
+
+**Confidence Scoring:**
+- ≥10 comparables: 95% confidence
+- 5-9 comparables: 80% confidence  
+- 3-4 comparables: 60% confidence
+- <3 comparables: 30% confidence

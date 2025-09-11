@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import CompetitorSelection from "@/components/competitor-selection";
 import RentComparisonChart from "@/components/rent-comparison-chart";
+import UnitListingsTable from "@/components/unit-listings-table";
 import type { Property, PropertyAnalysis, ScrapedProperty } from "@shared/schema";
 
 interface PropertyWithAnalysis {
@@ -28,18 +29,31 @@ interface ScrapingResult {
   error?: string;
 }
 
+interface Unit {
+  unitNumber: string;
+  unitType: string;
+  bedrooms: number;
+  bathrooms: string;
+  squareFootage: number;
+  rent: string;
+  availabilityDate: string;
+  status: string;
+}
+
 interface VacancyData {
   subjectProperty: {
     id: string;
     name: string;
     vacancyRate: number;
     unitTypes: UnitTypeData[];
+    units?: Unit[];
   };
   competitors: {
     id: string;
     name: string;
     vacancyRate: number;
     unitTypes: UnitTypeData[];
+    units?: Unit[];
   }[];
   marketInsights: {
     subjectVsMarket: string;
@@ -500,6 +514,36 @@ export default function Summarize({ params }: { params: { id: string } }) {
                     </div>
                   </CardContent>
                 </Card>
+              )}
+
+              {/* Unit Listings Tables Section */}
+              {vacancyQuery.data?.subjectProperty?.units && (
+                <div className="space-y-6" data-testid="unit-listings-section">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-semibold">Detailed Unit Listings</h3>
+                    <Badge variant="outline" className="text-xs">
+                      {vacancyQuery.data.subjectProperty.units.length + 
+                       vacancyQuery.data.competitors.reduce((sum, c) => sum + (c.units?.length || 0), 0)} Total Units
+                    </Badge>
+                  </div>
+
+                  {/* Subject Property Units Table */}
+                  <UnitListingsTable
+                    propertyName={vacancyQuery.data.subjectProperty.name}
+                    units={vacancyQuery.data.subjectProperty.units || []}
+                    isSubjectProperty={true}
+                  />
+
+                  {/* Competitor Property Units Tables */}
+                  {vacancyQuery.data.competitors.map((competitor) => (
+                    <UnitListingsTable
+                      key={competitor.id}
+                      propertyName={competitor.name}
+                      units={competitor.units || []}
+                      isSubjectProperty={false}
+                    />
+                  ))}
+                </div>
               )}
             </div>
           )}

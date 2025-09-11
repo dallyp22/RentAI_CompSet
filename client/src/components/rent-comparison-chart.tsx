@@ -61,17 +61,17 @@ interface RentComparisonChartProps {
 
 const UNIT_TYPES = ['Studio', '1BR', '2BR', '3BR+'];
 
-// Color palette for chart
-const SUBJECT_PROPERTY_COLOR = '#3B82F6'; // Blue
+// Color palette for chart - optimized for dark theme
+const SUBJECT_PROPERTY_COLOR = '#5DCCBF'; // Teal (target property)
 const COMPETITOR_COLORS = [
-  '#EF4444', // Red
-  '#10B981', // Green
-  '#F59E0B', // Amber
-  '#8B5CF6', // Purple
-  '#F97316', // Orange
-  '#06B6D4', // Cyan
-  '#84CC16', // Lime
-  '#EC4899', // Pink
+  '#F4A460', // Sandy Orange
+  '#FF8C69', // Salmon
+  '#FFB347', // Peach
+  '#FFA07A', // Light Salmon
+  '#FFD700', // Gold
+  '#FF6B6B', // Light Red
+  '#FF7F50', // Coral
+  '#FFA500', // Orange
 ];
 
 export default function RentComparisonChart({ data, isLoading, error }: RentComparisonChartProps) {
@@ -87,17 +87,18 @@ export default function RentComparisonChart({ data, isLoading, error }: RentComp
       return unit ? unit.avgRent : 0;
     };
 
-    // Subject property dataset (blue bars)
+    // Subject property dataset (teal bars)
     datasets.push({
-      label: data.subjectProperty.name,
+      label: data.subjectProperty.name + ' (Target)',
       data: labels.map(type => getRentByUnitType(data.subjectProperty, type)),
       backgroundColor: SUBJECT_PROPERTY_COLOR,
       borderColor: SUBJECT_PROPERTY_COLOR,
-      borderWidth: 1,
+      borderWidth: 2,
+      borderRadius: 4,
       isSubject: true,
     });
 
-    // Competitor datasets (different colors)
+    // Competitor datasets (orange tones)
     data.competitors.forEach((competitor, index) => {
       const color = COMPETITOR_COLORS[index % COMPETITOR_COLORS.length];
       datasets.push({
@@ -105,7 +106,8 @@ export default function RentComparisonChart({ data, isLoading, error }: RentComp
         data: labels.map(type => getRentByUnitType(competitor, type)),
         backgroundColor: color,
         borderColor: color,
-        borderWidth: 1,
+        borderWidth: 2,
+        borderRadius: 4,
         isSubject: false,
       });
     });
@@ -119,12 +121,25 @@ export default function RentComparisonChart({ data, isLoading, error }: RentComp
     plugins: {
       title: {
         display: true,
-        text: 'Average Rent Comparison by Unit Type',
+        text: 'Rent Comparison by Bedrooms',
         font: {
-          size: 16,
+          size: 18,
           weight: 'bold' as const,
         },
         padding: 20,
+        color: 'hsl(var(--foreground))',
+      },
+      datalabels: {
+        anchor: 'end' as const,
+        align: 'top' as const,
+        formatter: (value: number) => {
+          return value > 0 ? `$${Math.round(value).toLocaleString()}` : '';
+        },
+        color: 'hsl(var(--foreground))',
+        font: {
+          size: 11,
+          weight: 'bold' as const,
+        },
       },
       legend: {
         position: 'top' as const,
@@ -135,13 +150,14 @@ export default function RentComparisonChart({ data, isLoading, error }: RentComp
           font: {
             size: 12,
           },
+          color: 'hsl(var(--foreground))',
         },
       },
       tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        titleColor: 'white',
-        bodyColor: 'white',
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'hsl(var(--background))',
+        titleColor: 'hsl(var(--foreground))',
+        bodyColor: 'hsl(var(--muted-foreground))',
+        borderColor: 'hsl(var(--border))',
         borderWidth: 1,
         cornerRadius: 8,
         displayColors: true,
@@ -201,9 +217,16 @@ export default function RentComparisonChart({ data, isLoading, error }: RentComp
             size: 14,
             weight: 'bold' as const,
           },
+          color: 'hsl(var(--foreground))',
         },
         grid: {
           display: false,
+        },
+        ticks: {
+          color: 'hsl(var(--foreground))',
+          font: {
+            size: 12,
+          },
         },
       },
       y: {
@@ -214,15 +237,21 @@ export default function RentComparisonChart({ data, isLoading, error }: RentComp
             size: 14,
             weight: 'bold' as const,
           },
+          color: 'hsl(var(--foreground))',
         },
         beginAtZero: true,
         ticks: {
           callback: function(value: any) {
             return '$' + value.toLocaleString();
           },
+          color: 'hsl(var(--foreground))',
+          font: {
+            size: 11,
+          },
         },
         grid: {
-          color: 'rgba(0, 0, 0, 0.1)',
+          color: 'hsl(var(--border))',
+          borderDash: [3, 3],
         },
       },
     },
@@ -301,7 +330,7 @@ export default function RentComparisonChart({ data, isLoading, error }: RentComp
   return (
     <Card data-testid="rent-comparison-chart">
       <CardHeader>
-        <CardTitle>Average Rent Comparison by Unit Type</CardTitle>
+        <CardTitle>Rent Comparison by Bedrooms</CardTitle>
         <CardDescription>
           Comparing average rents across {data.subjectProperty.name} and {data.competitors.length} competitor{data.competitors.length !== 1 ? 's' : ''}
         </CardDescription>
