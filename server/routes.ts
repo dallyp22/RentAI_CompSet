@@ -754,10 +754,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`Vacancy summary request for property ${propertyId} with ${competitorIdsArray.length} competitors`);
 
-      // Get subject property and competitors
-      const subjectProperty = await storage.getScrapedProperty(propertyId as string);
+      // Get subject property - need to find the scraped property marked as isSubjectProperty
+      let subjectProperty = null;
+      
+      // First try to find by scraping job associated with the original propertyId
+      const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId as string);
+      if (scrapingJobs.length > 0) {
+        // Get all scraped properties from these jobs
+        for (const job of scrapingJobs) {
+          const scrapedProperties = await storage.getScrapedPropertiesByJob(job.id);
+          const subject = scrapedProperties.find(p => p.isSubjectProperty === true);
+          if (subject) {
+            subjectProperty = subject;
+            break;
+          }
+        }
+      }
+      
+      // If not found, try the direct method as fallback
       if (!subjectProperty) {
-        return res.status(404).json({ message: "Subject property not found" });
+        subjectProperty = await storage.getSubjectScrapedProperty();
+      }
+      
+      if (!subjectProperty) {
+        return res.status(404).json({ 
+          message: "Subject property not found. Please ensure the property has been scraped first.",
+          hint: "Run the scraping workflow for the property before requesting vacancy summary"
+        });
       }
 
       const competitorProperties = await storage.getSelectedScrapedProperties(competitorIdsArray as string[]);
