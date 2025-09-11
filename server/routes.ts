@@ -437,16 +437,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "processing"
       });
 
-      // Real Scrapezy API call for two-page city scraping
+      // Real Scrapezy API call for single-page city scraping
       try {
         const urls = [
-          `https://www.${cityUrl}`,
-          `https://www.${cityUrl}2/`
+          `https://www.${cityUrl}`
         ];
 
         console.log(`Starting Scrapezy scraping for ${cityState}:`, urls);
         
-        // Scrape both pages
+        // Scrape single page
         const allProperties = [];
         const jobIds = [];
         
