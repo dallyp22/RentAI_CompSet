@@ -293,25 +293,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create property
       const property = await storage.createProperty(propertyData);
       
-      // Generate AI analysis
-      const prompt = `Analyze the following property for real estate market positioning and provide insights in JSON format:
-      
-      Property Details:
-      - Address: ${property.address}
-      - Type: ${property.propertyType}
-      - Total Units: ${property.totalUnits}
-      - Built Year: ${property.builtYear}
-      - Square Footage: ${property.squareFootage}
-      - Parking Spaces: ${property.parkingSpaces}
-      - Amenities: ${property.amenities?.join(", ") || "None specified"}
-      
-      Please provide analysis in this exact JSON format:
-      {
-        "marketPosition": "string describing market position",
-        "competitiveAdvantages": ["advantage1", "advantage2", "advantage3"],
-        "pricingInsights": "string with pricing insights",
-        "recommendations": ["recommendation1", "recommendation2", "recommendation3"]
-      }`;
+      // Generate AI analysis using comprehensive public data prompt
+      const prompt = `Using only publicly available data, summarize the apartment property "${property.propertyName}" located at ${property.address}. Please include:
+
+Basic Property Info
+• Property Name: ${property.propertyName}
+• Number of units (estimated if not listed): ${property.totalUnits || 'please estimate'}
+• Year built: ${property.builtYear || 'please research'}
+• Property type (e.g., garden-style, mid-rise, high-rise): ${property.propertyType || 'please identify'}
+• Approximate square footage (if available): ${property.squareFootage || 'please estimate if available'}
+
+Listings & Rent Estimates
+• Recent or active rental listings (unit mix, price range)
+• Estimated rent per unit type (1BR, 2BR, etc.)
+• Source of rent info (e.g., Zillow, Apartments.com, Rentometer)
+
+Amenities and Features
+• Parking, laundry, gym, pool, pet policy, in-unit features
+• Current known amenities: ${property.amenities?.join(", ") || "Not specified - please research"}
+• Highlight what makes it stand out (e.g., remodeled units, smart tech)
+
+Neighborhood Overview
+• Walk Score, transit access, proximity to major employers or schools
+• Crime rating (from public sources like AreaVibes or NeighborhoodScout)
+• Notable nearby businesses or attractions
+
+Visuals
+• Link to map/street view
+• Exterior photos or listing images if available
+
+Please provide your analysis in this exact JSON format:
+{
+  "marketPosition": "Comprehensive description of the property's position in the local market based on publicly available data",
+  "competitiveAdvantages": ["specific advantage based on research", "another researched advantage", "third advantage from public data"],
+  "pricingInsights": "Detailed pricing analysis based on actual listings and rent data from public sources",
+  "recommendations": ["specific recommendation based on data", "another data-driven recommendation", "third actionable recommendation"]
+}`;
 
       const aiResponse = await openai.chat.completions.create({
         model: "gpt-4o", // Using gpt-4o which is widely available
