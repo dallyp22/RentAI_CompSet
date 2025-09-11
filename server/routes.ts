@@ -8,6 +8,144 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key" 
 });
 
+const SCRAPEZY_API_KEY = process.env.SCRAPEZY_API_KEY;
+const SCRAPEZY_BASE_URL = "https://scrapezy.com/api/extract";
+
+// Scrapezy API integration functions
+async function callScrapezyScraping(url: string) {
+  if (!SCRAPEZY_API_KEY) {
+    throw new Error("Scrapezy API key not configured");
+  }
+
+  const prompt = "Extract apartment listings from this apartments.com page. For each apartment property listing, extract: 1) The complete URL link to the individual apartment page (must start with https://www.apartments.com/), 2) The property/apartment name or title, 3) The address or location information. Return as JSON array with objects containing \"url\", \"name\", and \"address\" fields.";
+
+  // Create job
+  const jobResponse = await fetch(SCRAPEZY_BASE_URL, {
+    method: "POST",
+    headers: {
+      "x-api-key": SCRAPEZY_API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      url,
+      prompt
+    }),
+    signal: AbortSignal.timeout(30000)
+  });
+
+  if (!jobResponse.ok) {
+    throw new Error(`Scrapezy API error: ${jobResponse.status} ${jobResponse.statusText}`);
+  }
+
+  const jobData = await jobResponse.json();
+  const jobId = jobData.id || jobData.jobId;
+  
+  if (!jobId) {
+    throw new Error('No job ID received from Scrapezy');
+  }
+
+  // Poll for results
+  let attempts = 0;
+  const maxAttempts = 15; // 2.5 minutes maximum
+  const POLL_INTERVAL = 10000; // 10 seconds
+  let finalResult = null;
+
+  while (attempts < maxAttempts) {
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+    attempts++;
+    
+    const resultResponse = await fetch(`${SCRAPEZY_BASE_URL}/${jobId}`, {
+      headers: {
+        "x-api-key": SCRAPEZY_API_KEY,
+        "Content-Type": "application/json"
+      },
+      signal: AbortSignal.timeout(30000)
+    });
+
+    if (!resultResponse.ok) {
+      throw new Error(`Scrapezy polling error: ${resultResponse.status} ${resultResponse.statusText}`);
+    }
+
+    const resultData = await resultResponse.json();
+    
+    if (resultData.status === 'completed') {
+      finalResult = resultData;
+      break;
+    } else if (resultData.status === 'failed') {
+      throw new Error(`Scrapezy job failed: ${resultData.error || 'Unknown error'}`);
+    }
+    // Continue polling if status is pending
+  }
+
+  if (!finalResult && attempts >= maxAttempts) {
+    throw new Error('Scrapezy job timed out after 2.5 minutes');
+  }
+
+  return finalResult;
+}
+
+// Parse Scrapezy results to extract property URLs
+function parseUrls(scrapezyResult: any): Array<{url: string, name: string, address: string}> {
+  let properties = [];
+  
+  try {
+    // Try to get the result from the response structure
+    const resultText = scrapezyResult.result || scrapezyResult.data || scrapezyResult;
+    
+    if (typeof resultText === 'string') {
+      try {
+        const parsed = JSON.parse(resultText);
+        if (Array.isArray(parsed)) {
+          properties = parsed.filter(item => 
+            item && 
+            typeof item === 'object' && 
+            item.url && 
+            typeof item.url === 'string' &&
+            item.url.includes('apartments.com') &&
+            item.url.startsWith('http')
+          );
+        }
+      } catch (parseError) {
+        console.warn('Failed to parse JSON result, trying fallback parsing');
+        // Fallback: try to extract URLs from text
+        const lines = resultText.split('\n');
+        for (const line of lines) {
+          if (line.includes('apartments.com') && line.startsWith('http')) {
+            properties.push({
+              url: line.trim(),
+              name: 'Property',
+              address: 'Address not available'
+            });
+          }
+        }
+      }
+    } else if (Array.isArray(resultText)) {
+      properties = resultText.filter(item => 
+        item && 
+        typeof item === 'object' && 
+        item.url && 
+        typeof item.url === 'string' &&
+        item.url.includes('apartments.com')
+      );
+    }
+  } catch (error) {
+    console.error('Error parsing Scrapezy result:', error);
+  }
+
+  // Ensure all properties have required fields and deduplicate
+  const validProperties = properties
+    .map(prop => ({
+      url: prop.url?.trim() || '',
+      name: prop.name?.trim() || 'Property Name Not Available',
+      address: prop.address?.trim() || 'Address Not Available'
+    }))
+    .filter(prop => prop.url)
+    .filter((prop, index, arr) => arr.findIndex(p => p.url === prop.url) === index);
+
+  return validProperties;
+}
+
+
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // Create property and get initial AI analysis
@@ -28,7 +166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       - Built Year: ${property.builtYear}
       - Square Footage: ${property.squareFootage}
       - Parking Spaces: ${property.parkingSpaces}
-      - Amenities: ${property.amenities.join(", ")}
+      - Amenities: ${property.amenities?.join(", ") || "None specified"}
       
       Please provide analysis in this exact JSON format:
       {
@@ -294,19 +432,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create scraping job
       const scrapingJob = await storage.createScrapingJob({
         propertyId,
-        jobType: "city_discovery",
-        targetUrl: `https://${cityUrl}`,
-        status: "pending",
-        cityState
+        stage: "city_discovery",
+        cityUrl: `https://www.${cityUrl}`,
+        status: "processing"
       });
 
-      // In a real implementation, this would call the Scrapezy API
-      // For now, we'll simulate the process
-      res.json({ 
-        scrapingJob,
-        message: `Started scraping job for ${cityState}`,
-        targetUrl: `https://${cityUrl}`
-      });
+      // Real Scrapezy API call for two-page city scraping
+      try {
+        const urls = [
+          `https://www.${cityUrl}`,
+          `https://www.${cityUrl}2/`
+        ];
+
+        console.log(`Starting Scrapezy scraping for ${cityState}:`, urls);
+        
+        // Scrape both pages
+        const allProperties = [];
+        const jobIds = [];
+        
+        for (const url of urls) {
+          try {
+            console.log(`Scraping: ${url}`);
+            const pageResult = await callScrapezyScraping(url);
+            
+            if (pageResult && pageResult.id) {
+              jobIds.push(pageResult.id);
+            }
+            
+            // Parse the results from this page
+            const pageProperties = parseUrls(pageResult);
+            console.log(`Found ${pageProperties.length} properties on ${url}`);
+            allProperties.push(...pageProperties);
+            
+          } catch (pageError) {
+            console.error(`Error scraping ${url}:`, pageError);
+            // Continue with next page even if one fails
+          }
+        }
+
+        console.log(`Total properties found: ${allProperties.length}`);
+        
+        // Store scraped properties and try to match subject property
+        const scrapedProperties = [];
+        let subjectPropertyFound = false;
+
+        for (const propertyData of allProperties) {
+          if (!propertyData.name || !propertyData.address || !propertyData.url) {
+            console.log('Skipping property with missing data:', propertyData);
+            continue;
+          }
+
+          // Simple matching logic - check if property name or address matches
+          const isSubjectProperty = 
+            propertyData.name.toLowerCase().includes(property.propertyName?.toLowerCase() || '') ||
+            propertyData.address.toLowerCase().includes(property.address.split(',')[0].toLowerCase());
+
+          if (isSubjectProperty) {
+            subjectPropertyFound = true;
+            console.log('Found subject property match:', propertyData.name);
+          }
+
+          const scrapedProperty = await storage.createScrapedProperty({
+            scrapingJobId: scrapingJob.id,
+            name: propertyData.name,
+            url: propertyData.url,
+            address: propertyData.address,
+            distance: null,
+            matchScore: isSubjectProperty ? "100.0" : null,
+            isSubjectProperty
+          });
+          scrapedProperties.push(scrapedProperty);
+        }
+
+        // Update job status to completed
+        await storage.updateScrapingJob(scrapingJob.id, {
+          status: "completed",
+          completedAt: new Date(),
+          results: { 
+            totalProperties: allProperties.length,
+            subjectPropertyFound,
+            urls: urls,
+            jobIds: jobIds
+          }
+        });
+
+        res.json({ 
+          scrapingJob: { ...scrapingJob, status: "completed" },
+          message: `Successfully scraped ${allProperties.length} properties from ${cityState}`,
+          targetUrl: `https://www.${cityUrl}`,
+          scrapedProperties: scrapedProperties.length,
+          subjectPropertyFound,
+          jobIds
+        });
+
+      } catch (scrapingError) {
+        console.error("Scrapezy API error:", scrapingError);
+        
+        // Update job status to failed
+        await storage.updateScrapingJob(scrapingJob.id, {
+          status: "failed",
+          errorMessage: scrapingError instanceof Error ? scrapingError.message : "Unknown scraping error"
+        });
+
+        res.status(500).json({ 
+          message: "Scraping failed",
+          error: scrapingError instanceof Error ? scrapingError.message : "Unknown error",
+          details: scrapingError instanceof Error ? scrapingError.stack : undefined
+        });
+      }
     } catch (error) {
       console.error("Error starting scraping job:", error);
       res.status(500).json({ message: "Failed to start scraping job" });
@@ -338,10 +571,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: propertyData.name,
           url: propertyData.url,
           address: propertyData.address,
-          priceRange: propertyData.priceRange,
-          unitCount: propertyData.unitCount?.toString(),
           distance: propertyData.distance?.toString(),
-          amenities: propertyData.amenities || []
+          matchScore: propertyData.matchScore?.toString()
         });
         scrapedProperties.push(scrapedProperty);
       }
@@ -369,6 +600,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching scraping job:", error);
       res.status(500).json({ message: "Failed to fetch scraping job" });
+    }
+  });
+
+  // Get scraped properties for a property (for UI display)
+  app.get("/api/properties/:id/scraped-properties", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      const jobs = await storage.getScrapingJobsByProperty(propertyId);
+      
+      if (jobs.length === 0) {
+        return res.json({ scrapedProperties: [], totalCount: 0 });
+      }
+
+      // Get the most recent successful job
+      const completedJob = jobs
+        .filter(job => job.status === "completed")
+        .sort((a, b) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return bTime - aTime;
+        })[0];
+
+      if (!completedJob) {
+        return res.json({ scrapedProperties: [], totalCount: 0 });
+      }
+
+      const scrapedProperties = await storage.getScrapedPropertiesByJob(completedJob.id);
+      
+      // Separate subject property from competitors
+      const subjectProperty = scrapedProperties.find(p => p.isSubjectProperty);
+      const competitors = scrapedProperties.filter(p => !p.isSubjectProperty);
+
+      res.json({ 
+        scrapedProperties: competitors,  // Only return competitors for selection
+        subjectProperty,
+        totalCount: scrapedProperties.length,
+        scrapingJob: completedJob
+      });
+    } catch (error) {
+      console.error("Error fetching scraped properties:", error);
+      res.status(500).json({ message: "Failed to fetch scraped properties" });
     }
   });
 
