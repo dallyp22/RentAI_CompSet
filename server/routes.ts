@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, filterCriteriaSchema } from "@shared/schema";
 import OpenAI from "openai";
 
 const openai = new OpenAI({ 
@@ -458,11 +458,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Generate filtered analysis based on filter criteria
+  app.post("/api/filtered-analysis", async (req, res) => {
+    try {
+      const filterData = filterCriteriaSchema.parse(req.body);
+      
+      // Get subject property for analysis context
+      const subjectProperty = await storage.getSubjectScrapedProperty();
+      const propertyId = subjectProperty?.id || "default";
+      
+      // Generate filtered analysis
+      const analysis = await storage.generateFilteredAnalysis(propertyId, filterData);
+      
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error generating filtered analysis:", error);
+      res.status(500).json({ message: "Failed to generate filtered analysis" });
+    }
+  });
+
   // Generate optimization report
   app.post("/api/properties/:id/optimize", async (req, res) => {
     try {
       const propertyId = req.params.id;
-      const { goal, riskTolerance, timeline } = req.body;
+      const { goal, targetOccupancy, riskTolerance } = req.body;
 
       const property = await storage.getProperty(propertyId);
       const units = await storage.getPropertyUnits(propertyId);
@@ -471,18 +490,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Property or units not found" });
       }
 
-      // Generate AI-powered optimization recommendations
-      const prompt = `Generate pricing optimization recommendations for a property with the following details:
+      // Convert parameters to readable format for AI
+      const goalDisplayMap: Record<string, string> = {
+        'maximize-revenue': 'Maximize Revenue',
+        'maximize-occupancy': 'Maximize Occupancy', 
+        'balanced': 'Balanced Approach',
+        'custom': 'Custom Strategy'
+      };
+      
+      const riskDisplayMap: Record<number, string> = {
+        1: 'Low (Conservative)',
+        2: 'Medium (Moderate)', 
+        3: 'High (Aggressive)'
+      };
 
-      Property: ${property.address}
-      Goal: ${goal}
-      Risk Tolerance: ${riskTolerance}
-      Timeline: ${timeline}
+      // Generate AI-powered optimization recommendations
+      const prompt = `As a real estate pricing optimization expert, analyze the following property and provide pricing recommendations:
+
+      Property Details:
+      - Address: ${property.address}
+      - Property Type: ${property.propertyType}
+      - Total Units: ${property.totalUnits}
+      - Built Year: ${property.builtYear}
+
+      Optimization Parameters:
+      - Goal: ${goalDisplayMap[goal] || goal}
+      - Target Occupancy: ${targetOccupancy}%
+      - Risk Tolerance: ${riskDisplayMap[riskTolerance] || 'Medium'}
       
-      Current Units:
-      ${units.map(unit => `${unit.unitNumber}: ${unit.unitType} - $${unit.currentRent} - ${unit.status}`).join('\n')}
+      Current Unit Portfolio:
+      ${units.map(unit => `${unit.unitNumber}: ${unit.unitType} - Current Rent: $${unit.currentRent} - Status: ${unit.status}`).join('\n')}
       
-      Please provide optimization in this exact JSON format:
+      Market Context:
+      - Consider current market conditions for similar properties
+      - Factor in seasonal trends and local market dynamics
+      - Account for unit turnover costs and vacancy risks
+      - Balance revenue optimization with occupancy targets
+      
+      Please provide optimization recommendations in this exact JSON format:
       {
         "unitRecommendations": [
           {
@@ -490,13 +535,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             "currentRent": number,
             "recommendedRent": number,
             "change": number,
-            "annualImpact": number
+            "annualImpact": number,
+            "confidenceLevel": "High|Medium|Low",
+            "reasoning": "Brief explanation for the recommendation"
           }
         ],
         "totalIncrease": number,
         "affectedUnits": number,
         "avgIncrease": number,
-        "riskLevel": "Low|Medium|High"
+        "riskLevel": "Low|Medium|High",
+        "marketInsights": {
+          "occupancyImpact": "Expected impact on occupancy rate",
+          "competitivePosition": "How this positions the property vs competitors", 
+          "timeToLease": "Average days to lease at new rates"
+        }
       }`;
 
       const aiResponse = await openai.chat.completions.create({
@@ -522,9 +574,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create optimization report
       const report = await storage.createOptimizationReport({
         propertyId,
-        goal,
-        riskTolerance,
-        timeline,
+        goal: goalDisplayMap[goal] || goal,
+        riskTolerance: riskDisplayMap[riskTolerance] || 'Medium',
+        timeline: `Target Occupancy: ${targetOccupancy}%`,
         totalIncrease: optimizationData.totalIncrease.toString(),
         affectedUnits: optimizationData.affectedUnits,
         avgIncrease: optimizationData.avgIncrease.toString(),

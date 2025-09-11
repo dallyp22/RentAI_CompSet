@@ -131,3 +131,33 @@ export type ScrapedProperty = typeof scrapedProperties.$inferSelect;
 export type InsertScrapedProperty = z.infer<typeof insertScrapedPropertySchema>;
 export type ScrapedUnit = typeof scrapedUnits.$inferSelect;
 export type InsertScrapedUnit = z.infer<typeof insertScrapedUnitSchema>;
+
+// Filter criteria and analysis schemas
+export const filterCriteriaSchema = z.object({
+  bedroomTypes: z.array(z.enum(["Studio", "1BR", "2BR", "3BR"])).default([]),
+  priceRange: z.object({
+    min: z.number().min(0),
+    max: z.number().min(0)
+  }),
+  availability: z.enum(["now", "30days", "60days"]).default("now"),
+  squareFootageRange: z.object({
+    min: z.number().min(0),
+    max: z.number().min(0)
+  })
+});
+
+export const filteredAnalysisSchema = z.object({
+  marketPosition: z.string(),
+  pricingPowerScore: z.number().min(0).max(100),
+  competitiveAdvantages: z.array(z.string()),
+  recommendations: z.array(z.string()),
+  unitCount: z.number().min(0),
+  avgRent: z.number().min(0),
+  percentileRank: z.number().min(0).max(100),
+  locationScore: z.number().min(0).max(100),
+  amenityScore: z.number().min(0).max(100),
+  pricePerSqFt: z.number().min(0)
+});
+
+export type FilterCriteria = z.infer<typeof filterCriteriaSchema>;
+export type FilteredAnalysis = z.infer<typeof filteredAnalysisSchema>;

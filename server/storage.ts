@@ -14,7 +14,9 @@ import {
   type ScrapedProperty,
   type InsertScrapedProperty,
   type ScrapedUnit,
-  type InsertScrapedUnit
+  type InsertScrapedUnit,
+  type FilterCriteria,
+  type FilteredAnalysis
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -61,6 +63,10 @@ export interface IStorage {
   
   // Get scraped property by ID
   getScrapedProperty(id: string): Promise<ScrapedProperty | undefined>;
+  
+  // Filtered analysis methods
+  getFilteredScrapedUnits(criteria: FilterCriteria): Promise<ScrapedUnit[]>;
+  generateFilteredAnalysis(propertyId: string, criteria: FilterCriteria): Promise<FilteredAnalysis>;
 }
 
 export class MemStorage implements IStorage {
@@ -144,6 +150,95 @@ export class MemStorage implements IStorage {
 
     competitors.forEach(competitor => {
       this.competitorProperties.set(competitor.id, competitor);
+    });
+
+    // Seed sample scraped properties and units for testing filtering functionality
+    const scrapedPropertyIds = [randomUUID(), randomUUID(), randomUUID()];
+    
+    // Create sample scraped properties
+    const scrapedProperties = [
+      {
+        id: scrapedPropertyIds[0],
+        scrapingJobId: randomUUID(),
+        name: "Downtown Austin Apartments",
+        address: "100 Main St, Austin, TX",
+        url: "https://example.com/property1",
+        distance: "0.5",
+        isSubjectProperty: true,
+        matchScore: "95.0",
+        createdAt: new Date()
+      },
+      {
+        id: scrapedPropertyIds[1], 
+        scrapingJobId: randomUUID(),
+        name: "River View Complex",
+        address: "200 River St, Austin, TX",
+        url: "https://example.com/property2",
+        distance: "0.8",
+        isSubjectProperty: false,
+        matchScore: "88.0",
+        createdAt: new Date()
+      },
+      {
+        id: scrapedPropertyIds[2],
+        scrapingJobId: randomUUID(),
+        name: "City Center Residences", 
+        address: "300 City Ave, Austin, TX",
+        url: "https://example.com/property3",
+        distance: "1.2",
+        isSubjectProperty: false,
+        matchScore: "82.0",
+        createdAt: new Date()
+      }
+    ];
+
+    scrapedProperties.forEach(property => {
+      this.scrapedProperties.set(property.id, property);
+    });
+
+    // Create sample scraped units with diverse data for testing filters
+    const sampleUnits = [
+      // Property 1 units (subject property)
+      { propertyId: scrapedPropertyIds[0], unitType: "Studio", bedrooms: 0, bathrooms: "1.0", squareFootage: 450, rent: "1200", status: "available" },
+      { propertyId: scrapedPropertyIds[0], unitType: "Studio", bedrooms: 0, bathrooms: "1.0", squareFootage: 500, rent: "1350", status: "available" },
+      { propertyId: scrapedPropertyIds[0], unitType: "1BR/1BA", bedrooms: 1, bathrooms: "1.0", squareFootage: 650, rent: "1650", status: "available" },
+      { propertyId: scrapedPropertyIds[0], unitType: "1BR/1BA", bedrooms: 1, bathrooms: "1.0", squareFootage: 700, rent: "1800", status: "occupied" },
+      { propertyId: scrapedPropertyIds[0], unitType: "2BR/2BA", bedrooms: 2, bathrooms: "2.0", squareFootage: 950, rent: "2200", status: "available" },
+      { propertyId: scrapedPropertyIds[0], unitType: "2BR/2BA", bedrooms: 2, bathrooms: "2.0", squareFootage: 1000, rent: "2400", status: "available" },
+      { propertyId: scrapedPropertyIds[0], unitType: "3BR/2BA", bedrooms: 3, bathrooms: "2.0", squareFootage: 1200, rent: "2800", status: "available" },
+      
+      // Property 2 units (competitor)
+      { propertyId: scrapedPropertyIds[1], unitType: "Studio", bedrooms: 0, bathrooms: "1.0", squareFootage: 425, rent: "1100", status: "available" },
+      { propertyId: scrapedPropertyIds[1], unitType: "1BR/1BA", bedrooms: 1, bathrooms: "1.0", squareFootage: 600, rent: "1500", status: "available" },
+      { propertyId: scrapedPropertyIds[1], unitType: "1BR/1BA", bedrooms: 1, bathrooms: "1.0", squareFootage: 675, rent: "1700", status: "occupied" },
+      { propertyId: scrapedPropertyIds[1], unitType: "2BR/2BA", bedrooms: 2, bathrooms: "2.0", squareFootage: 900, rent: "2000", status: "available" },
+      { propertyId: scrapedPropertyIds[1], unitType: "2BR/2BA", bedrooms: 2, bathrooms: "2.0", squareFootage: 975, rent: "2150", status: "available" },
+      { propertyId: scrapedPropertyIds[1], unitType: "3BR/2BA", bedrooms: 3, bathrooms: "2.0", squareFootage: 1150, rent: "2600", status: "occupied" },
+
+      // Property 3 units (competitor)
+      { propertyId: scrapedPropertyIds[2], unitType: "Studio", bedrooms: 0, bathrooms: "1.0", squareFootage: 480, rent: "1400", status: "available" },
+      { propertyId: scrapedPropertyIds[2], unitType: "1BR/1BA", bedrooms: 1, bathrooms: "1.0", squareFootage: 720, rent: "1900", status: "available" },
+      { propertyId: scrapedPropertyIds[2], unitType: "2BR/1BA", bedrooms: 2, bathrooms: "1.0", squareFootage: 850, rent: "1950", status: "available" },
+      { propertyId: scrapedPropertyIds[2], unitType: "2BR/2BA", bedrooms: 2, bathrooms: "2.0", squareFootage: 1050, rent: "2500", status: "available" },
+      { propertyId: scrapedPropertyIds[2], unitType: "3BR/2BA", bedrooms: 3, bathrooms: "2.0", squareFootage: 1300, rent: "3000", status: "available" },
+      { propertyId: scrapedPropertyIds[2], unitType: "3BR/2BA", bedrooms: 3, bathrooms: "2.0", squareFootage: 1400, rent: "3200", status: "occupied" }
+    ];
+
+    sampleUnits.forEach(unitData => {
+      const unit = {
+        id: randomUUID(),
+        propertyId: unitData.propertyId,
+        unitNumber: null,
+        unitType: unitData.unitType,
+        bedrooms: unitData.bedrooms,
+        bathrooms: unitData.bathrooms,
+        squareFootage: unitData.squareFootage,
+        rent: unitData.rent,
+        availabilityDate: null,
+        status: unitData.status,
+        createdAt: new Date()
+      };
+      this.scrapedUnits.set(unit.id, unit);
     });
   }
 
@@ -353,6 +448,102 @@ export class MemStorage implements IStorage {
 
   async getScrapedProperty(id: string): Promise<ScrapedProperty | undefined> {
     return this.scrapedProperties.get(id);
+  }
+
+  async getFilteredScrapedUnits(criteria: FilterCriteria): Promise<ScrapedUnit[]> {
+    let units = Array.from(this.scrapedUnits.values());
+
+    // Filter by bedroom types
+    if (criteria.bedroomTypes.length > 0) {
+      units = units.filter(unit => {
+        if (criteria.bedroomTypes.includes("Studio") && (unit.bedrooms === 0 || unit.unitType.toLowerCase().includes("studio"))) return true;
+        if (criteria.bedroomTypes.includes("1BR") && unit.bedrooms === 1) return true;
+        if (criteria.bedroomTypes.includes("2BR") && unit.bedrooms === 2) return true;
+        if (criteria.bedroomTypes.includes("3BR") && unit.bedrooms === 3) return true;
+        return false;
+      });
+    }
+
+    // Filter by price range
+    units = units.filter(unit => {
+      if (!unit.rent) return false;
+      const rent = parseFloat(unit.rent.toString());
+      return rent >= criteria.priceRange.min && rent <= criteria.priceRange.max;
+    });
+
+    // Filter by square footage range
+    units = units.filter(unit => {
+      if (!unit.squareFootage) return true; // Keep units without sq ft data
+      return unit.squareFootage >= criteria.squareFootageRange.min && unit.squareFootage <= criteria.squareFootageRange.max;
+    });
+
+    // Filter by availability (simplified for demo)
+    if (criteria.availability === "now") {
+      units = units.filter(unit => unit.status === "available");
+    } else if (criteria.availability === "30days") {
+      units = units.filter(unit => unit.status === "available" || unit.status === "pending");
+    }
+    // For 60days, keep all units
+
+    return units;
+  }
+
+  async generateFilteredAnalysis(propertyId: string, criteria: FilterCriteria): Promise<FilteredAnalysis> {
+    // Get filtered units from all properties for comparison
+    const allFilteredUnits = await this.getFilteredScrapedUnits(criteria);
+    
+    // Get property-specific units
+    const propertyUnits = allFilteredUnits.filter(unit => unit.propertyId === propertyId);
+
+    // Calculate metrics
+    const unitCount = propertyUnits.length;
+    const avgRent = propertyUnits.reduce((sum, unit) => sum + (unit.rent ? parseFloat(unit.rent.toString()) : 0), 0) / unitCount || 0;
+    const avgSqFt = propertyUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / unitCount || 0;
+    const pricePerSqFt = avgSqFt > 0 ? avgRent / avgSqFt : 0;
+
+    // Calculate market percentile (simplified)
+    const allRents = allFilteredUnits.map(unit => parseFloat(unit.rent?.toString() || "0")).filter(rent => rent > 0).sort((a, b) => a - b);
+    let percentileRank = 50; // Default
+    if (allRents.length > 0 && avgRent > 0) {
+      const position = allRents.findIndex(rent => rent >= avgRent);
+      percentileRank = position >= 0 ? Math.round((position / allRents.length) * 100) : 95;
+    }
+
+    // Generate pricing power score (0-100)
+    const pricingPowerScore = Math.min(100, Math.max(0, percentileRank + (pricePerSqFt > 2.5 ? 10 : -5)));
+
+    // Generate competitive advantages based on data
+    const competitiveAdvantages = [];
+    if (percentileRank > 75) competitiveAdvantages.push("Premium market positioning");
+    if (pricePerSqFt > 2.0) competitiveAdvantages.push("High value per square foot");
+    if (avgSqFt > 900) competitiveAdvantages.push("Spacious unit layouts");
+    if (unitCount > 10) competitiveAdvantages.push("Diverse unit mix available");
+
+    // Generate recommendations
+    const recommendations = [];
+    if (percentileRank < 50) recommendations.push("Consider premium amenity upgrades");
+    if (pricePerSqFt < 1.8) recommendations.push("Opportunity for rent optimization");
+    if (unitCount < 5) recommendations.push("Limited inventory may create scarcity value");
+
+    // Generate market position description
+    let marketPosition = "Market Average";
+    if (percentileRank > 75) marketPosition = "Premium Market Leader";
+    else if (percentileRank > 50) marketPosition = "Above Market Average";
+    else if (percentileRank > 25) marketPosition = "Below Market Average";
+    else marketPosition = "Value Market Position";
+
+    return {
+      marketPosition,
+      pricingPowerScore,
+      competitiveAdvantages,
+      recommendations,
+      unitCount,
+      avgRent: Math.round(avgRent),
+      percentileRank,
+      locationScore: Math.min(100, Math.max(0, percentileRank + 5)), // Simplified
+      amenityScore: Math.min(100, Math.max(0, pricingPowerScore - 10)), // Simplified
+      pricePerSqFt: Math.round(pricePerSqFt * 100) / 100
+    };
   }
 }
 

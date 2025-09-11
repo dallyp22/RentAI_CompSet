@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileSpreadsheet } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -23,9 +26,9 @@ export default function Optimize({ params }: { params: { id: string } }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
-  const [goal, setGoal] = useState("Maximize Revenue");
-  const [riskTolerance, setRiskTolerance] = useState("Moderate");
-  const [timeline, setTimeline] = useState("30 Days");
+  const [goal, setGoal] = useState("maximize-revenue");
+  const [targetOccupancy, setTargetOccupancy] = useState([95]);
+  const [riskTolerance, setRiskTolerance] = useState([2]); // 1=Low, 2=Medium, 3=High
 
   const propertyQuery = useQuery<PropertyWithAnalysis>({
     queryKey: ['/api/properties', params.id],
@@ -44,7 +47,7 @@ export default function Optimize({ params }: { params: { id: string } }) {
   });
 
   const optimizeMutation = useMutation({
-    mutationFn: async (data: { goal: string; riskTolerance: string; timeline: string }): Promise<OptimizationData> => {
+    mutationFn: async (data: { goal: string; targetOccupancy: number; riskTolerance: number }): Promise<OptimizationData> => {
       const res = await apiRequest("POST", `/api/properties/${params.id}/optimize`, data);
       return res.json();
     },
@@ -69,15 +72,32 @@ export default function Optimize({ params }: { params: { id: string } }) {
     if (!optimizationQuery.data) {
       createUnitsMutation.mutate(undefined, {
         onSuccess: () => {
-          optimizeMutation.mutate({ goal, riskTolerance, timeline });
+          optimizeMutation.mutate({ 
+            goal, 
+            targetOccupancy: targetOccupancy[0], 
+            riskTolerance: riskTolerance[0] 
+          });
         }
       });
     } else {
-      optimizeMutation.mutate({ goal, riskTolerance, timeline });
+      optimizeMutation.mutate({ 
+        goal, 
+        targetOccupancy: targetOccupancy[0], 
+        riskTolerance: riskTolerance[0] 
+      });
     }
   };
 
-  const handleExportToExcel = () => {
+  const getRiskLabel = (value: number) => {
+    switch (value) {
+      case 1: return "Low";
+      case 2: return "Medium";
+      case 3: return "High";
+      default: return "Medium";
+    }
+  };
+
+  const handleExportToExcel = async () => {
     const property = propertyQuery.data?.property;
     const optimization = optimizationQuery.data;
     
@@ -93,9 +113,9 @@ export default function Optimize({ params }: { params: { id: string } }) {
     const exportData: ExcelExportData = {
       propertyInfo: {
         address: property.address,
-        type: property.propertyType,
-        units: property.totalUnits,
-        builtYear: property.builtYear,
+        type: property.propertyType || 'Unknown',
+        units: property.totalUnits || 0,
+        builtYear: property.builtYear || 0,
       },
       units: optimization.units.map(unit => ({
         unitNumber: unit.unitNumber,
@@ -105,6 +125,8 @@ export default function Optimize({ params }: { params: { id: string } }) {
         change: unit.recommendedRent ? parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent) : 0,
         annualImpact: unit.recommendedRent ? (parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent)) * 12 : 0,
         status: unit.status,
+        confidenceLevel: 'Medium', // Default confidence level
+        reasoning: 'AI-generated pricing recommendation' // Default reasoning
       })),
       summary: {
         totalIncrease: parseFloat(optimization.report.totalIncrease),
@@ -114,12 +136,19 @@ export default function Optimize({ params }: { params: { id: string } }) {
       }
     };
 
-    exportToExcel(exportData);
-    
-    toast({
-      title: "Export Successful",
-      description: "Optimization report has been downloaded.",
-    });
+    try {
+      await exportToExcel(exportData);
+      toast({
+        title: "Export Successful",
+        description: "Optimization report has been downloaded as Excel file.",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Failed to generate Excel file. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (propertyQuery.isLoading) {
@@ -160,63 +189,93 @@ export default function Optimize({ params }: { params: { id: string } }) {
         </div>
 
         {/* Optimization Controls */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6" data-testid="optimization-controls">
-          <div className="bg-muted p-4 rounded-lg">
-            <label className="block text-sm font-medium mb-2">Optimization Goal</label>
-            <Select value={goal} onValueChange={setGoal}>
-              <SelectTrigger data-testid="select-goal">
-                <SelectValue placeholder="Select goal" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Maximize Revenue">Maximize Revenue</SelectItem>
-                <SelectItem value="Minimize Vacancy">Minimize Vacancy</SelectItem>
-                <SelectItem value="Market Competitive">Market Competitive</SelectItem>
-                <SelectItem value="Premium Positioning">Premium Positioning</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6" data-testid="optimization-controls">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Optimization Goal</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RadioGroup value={goal} onValueChange={setGoal} data-testid="radio-goal">
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="maximize-revenue" id="maximize-revenue" />
+                  <Label htmlFor="maximize-revenue">Maximize Revenue</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="maximize-occupancy" id="maximize-occupancy" />
+                  <Label htmlFor="maximize-occupancy">Maximize Occupancy</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="balanced" id="balanced" />
+                  <Label htmlFor="balanced">Balanced</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="custom" id="custom" />
+                  <Label htmlFor="custom">Custom</Label>
+                </div>
+              </RadioGroup>
+            </CardContent>
+          </Card>
           
-          <div className="bg-muted p-4 rounded-lg">
-            <label className="block text-sm font-medium mb-2">Risk Tolerance</label>
-            <Select value={riskTolerance} onValueChange={setRiskTolerance}>
-              <SelectTrigger data-testid="select-risk">
-                <SelectValue placeholder="Select risk tolerance" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Conservative">Conservative</SelectItem>
-                <SelectItem value="Moderate">Moderate</SelectItem>
-                <SelectItem value="Aggressive">Aggressive</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Target Occupancy</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="px-2" data-testid="slider-occupancy">
+                <Slider
+                  value={targetOccupancy}
+                  onValueChange={setTargetOccupancy}
+                  max={100}
+                  min={85}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>85%</span>
+                <span className="font-semibold">{targetOccupancy[0]}%</span>
+                <span>100%</span>
+              </div>
+            </CardContent>
+          </Card>
           
-          <div className="bg-muted p-4 rounded-lg">
-            <label className="block text-sm font-medium mb-2">Implementation Timeline</label>
-            <Select value={timeline} onValueChange={setTimeline}>
-              <SelectTrigger data-testid="select-timeline">
-                <SelectValue placeholder="Select timeline" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Immediate">Immediate</SelectItem>
-                <SelectItem value="30 Days">30 Days</SelectItem>
-                <SelectItem value="60 Days">60 Days</SelectItem>
-                <SelectItem value="90 Days">90 Days</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="bg-muted p-4 rounded-lg">
-            <Button 
-              className="w-full"
-              onClick={generateRecommendations}
-              disabled={optimizeMutation.isPending || createUnitsMutation.isPending}
-              data-testid="button-generate-recommendations"
-            >
-              {(optimizeMutation.isPending || createUnitsMutation.isPending) 
-                ? "Generating..." 
-                : "Update Recommendations"}
-            </Button>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Risk Tolerance</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="px-2" data-testid="slider-risk">
+                <Slider
+                  value={riskTolerance}
+                  onValueChange={setRiskTolerance}
+                  max={3}
+                  min={1}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Low</span>
+                <span className="font-semibold">{getRiskLabel(riskTolerance[0])}</span>
+                <span>High</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Generate Button */}
+        <div className="flex justify-center mb-6">
+          <Button 
+            size="lg"
+            onClick={generateRecommendations}
+            disabled={optimizeMutation.isPending || createUnitsMutation.isPending}
+            data-testid="button-generate-recommendations"
+            className="px-8"
+          >
+            {(optimizeMutation.isPending || createUnitsMutation.isPending) 
+              ? "Generating Recommendations..." 
+              : "Generate Optimization Recommendations"}
+          </Button>
         </div>
 
         {/* Optimization Table */}
