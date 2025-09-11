@@ -648,9 +648,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           console.log(`Starting unit scraping for property: ${property.name} at ${property.url}`);
           
+          // Get the original property ID for subject property
+          let jobPropertyId = "temp-" + property.id;
+          if (property.isSubjectProperty) {
+            const originalPropertyId = await storage.getOriginalPropertyIdFromScraped(property.id);
+            if (originalPropertyId) {
+              jobPropertyId = originalPropertyId;
+              console.log(`Using original property ID ${originalPropertyId} for subject property ${property.name}`);
+            } else {
+              console.warn(`Could not find original property ID for subject property ${property.name}, using scraped ID`);
+              jobPropertyId = property.id;
+            }
+          }
+          
           // Create scraping job for unit details
           const scrapingJob = await storage.createScrapingJob({
-            propertyId: property.isSubjectProperty ? property.id : "temp-" + property.id,
+            propertyId: jobPropertyId,
             stage: "unit_details",
             cityUrl: property.url,
             status: "processing"

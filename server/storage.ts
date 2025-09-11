@@ -64,6 +64,9 @@ export interface IStorage {
   // Get scraped property by ID
   getScrapedProperty(id: string): Promise<ScrapedProperty | undefined>;
   
+  // Get original property ID from scraped property
+  getOriginalPropertyIdFromScraped(scrapedPropertyId: string): Promise<string | null>;
+  
   // Filtered analysis methods
   getFilteredScrapedUnits(criteria: FilterCriteria): Promise<ScrapedUnit[]>;
   generateFilteredAnalysis(propertyId: string, criteria: FilterCriteria): Promise<FilteredAnalysis>;
@@ -448,6 +451,18 @@ export class MemStorage implements IStorage {
 
   async getScrapedProperty(id: string): Promise<ScrapedProperty | undefined> {
     return this.scrapedProperties.get(id);
+  }
+
+  async getOriginalPropertyIdFromScraped(scrapedPropertyId: string): Promise<string | null> {
+    const scrapedProperty = await this.getScrapedProperty(scrapedPropertyId);
+    if (!scrapedProperty) return null;
+    
+    // Get the scraping job associated with this scraped property
+    const scrapingJob = await this.getScrapingJob(scrapedProperty.scrapingJobId);
+    if (!scrapingJob) return null;
+    
+    // Return the original property ID from the scraping job
+    return scrapingJob.propertyId;
   }
 
   async getFilteredScrapedUnits(criteria: FilterCriteria): Promise<ScrapedUnit[]> {
