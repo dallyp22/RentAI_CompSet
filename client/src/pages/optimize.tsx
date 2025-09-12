@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -20,6 +20,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import OptimizationTable from "@/components/optimization-table";
 import { exportToExcel, type ExcelExportData } from "@/lib/excel-export";
+import { useWorkflowState } from "@/hooks/use-workflow-state";
 import type { Property, PropertyUnit, OptimizationReport } from "@shared/schema";
 
 interface OptimizationData {
@@ -34,12 +35,14 @@ interface PropertyWithAnalysis {
 
 export default function Optimize({ params }: { params: { id: string } }) {
   const { toast } = useToast();
+  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(params.id);
   
   const [goal, setGoal] = useState("maximize-revenue");
   const [targetOccupancy, setTargetOccupancy] = useState([95]);
   const [riskTolerance, setRiskTolerance] = useState([2]); // 1=Low, 2=Medium, 3=High
   const [showApplyDialog, setShowApplyDialog] = useState(false);
   const [pendingPrices, setPendingPrices] = useState<Record<string, number>>({});
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   const propertyQuery = useQuery<PropertyWithAnalysis>({
     queryKey: ['/api/properties', params.id],
@@ -47,7 +50,17 @@ export default function Optimize({ params }: { params: { id: string } }) {
 
   const optimizationQuery = useQuery<OptimizationData>({
     queryKey: ['/api/properties', params.id, 'optimization'],
-    enabled: false // We'll trigger this manually
+    enabled: hasInitialized // Enabled once initialized
+  });
+
+  const syncUnitsMutation = useMutation({
+    mutationFn: async (): Promise<PropertyUnit[]> => {
+      const res = await apiRequest("POST", `/api/properties/${params.id}/sync-units`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/properties', params.id, 'optimization'] });
+    }
   });
 
   const createUnitsMutation = useMutation({
@@ -56,6 +69,54 @@ export default function Optimize({ params }: { params: { id: string } }) {
       return res.json();
     }
   });
+
+  // Load workflow state and sync units on mount
+  useEffect(() => {
+    const initializeOptimization = async () => {
+      // Load workflow state
+      const loadedState = await loadWorkflowState();
+      if (loadedState && loadedState.optimizationParams) {
+        setGoal(loadedState.optimizationParams.goal || "maximize-revenue");
+        setTargetOccupancy([loadedState.optimizationParams.targetOccupancy || 95]);
+        setRiskTolerance([loadedState.optimizationParams.riskTolerance || 2]);
+      }
+      
+      // Save current stage
+      await saveWorkflowState({
+        stage: 'optimize',
+        optimizationParams: {
+          goal,
+          targetOccupancy: targetOccupancy[0],
+          riskTolerance: riskTolerance[0]
+        }
+      });
+      
+      // Sync units first to ensure we have all 14 units
+      try {
+        await syncUnitsMutation.mutateAsync();
+      } catch (error) {
+        console.error('Failed to sync units:', error);
+      }
+      
+      setHasInitialized(true);
+    };
+    
+    initializeOptimization();
+  }, [params.id]);
+
+  // Save workflow state when optimization params change
+  useEffect(() => {
+    if (hasInitialized) {
+      saveWorkflowState({
+        stage: 'optimize',
+        optimizationParams: {
+          goal,
+          targetOccupancy: targetOccupancy[0],
+          riskTolerance: riskTolerance[0]
+        }
+      });
+    }
+  }, [goal, targetOccupancy, riskTolerance, hasInitialized]);
 
   const optimizeMutation = useMutation({
     mutationFn: async (data: { goal: string; targetOccupancy: number; riskTolerance: number }): Promise<OptimizationData> => {

@@ -6,6 +6,7 @@ import { ArrowRight, AlertCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import AnalysisFilters from "@/components/analysis-filters";
 import FilteredAnalysisResults from "@/components/filtered-analysis-results";
+import { useWorkflowState } from "@/hooks/use-workflow-state";
 import type { FilterCriteria, FilteredAnalysis } from "@shared/schema";
 
 export default function Analyze({ params }: { params: { id: string } }) {
@@ -17,6 +18,8 @@ export default function Analyze({ params }: { params: { id: string } }) {
     squareFootageRange: { min: 400, max: 2000 }
   });
   const [analysisData, setAnalysisData] = useState<FilteredAnalysis | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(params.id);
 
   // Mutation for filtered analysis
   const analysisMutation = useMutation({
@@ -32,16 +35,40 @@ export default function Analyze({ params }: { params: { id: string } }) {
     }
   });
 
-  // Trigger analysis when filters change
+  // Load workflow state on mount and restore filters
   useEffect(() => {
-    analysisMutation.mutate(filters);
-  }, [filters]);
+    const initializeState = async () => {
+      const loadedState = await loadWorkflowState();
+      if (loadedState && loadedState.filterCriteria) {
+        setFilters(loadedState.filterCriteria);
+      }
+      setIsInitialized(true);
+    };
+    initializeState();
+  }, [params.id]);
+
+  // Trigger analysis when filters change (after initialization)
+  useEffect(() => {
+    if (isInitialized) {
+      analysisMutation.mutate(filters);
+      // Save workflow state with current filters
+      saveWorkflowState({
+        stage: 'analyze',
+        filterCriteria: filters
+      });
+    }
+  }, [filters, isInitialized]);
 
   const handleFiltersChange = (newFilters: FilterCriteria) => {
     setFilters(newFilters);
   };
 
-  const handleContinueToOptimize = () => {
+  const handleContinueToOptimize = async () => {
+    // Save workflow state before navigating
+    await saveWorkflowState({
+      stage: 'optimize',
+      filterCriteria: filters
+    });
     setLocation(`/optimize/${params.id}`);
   };
 

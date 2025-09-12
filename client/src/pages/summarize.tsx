@@ -11,6 +11,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import CompetitorSelection from "@/components/competitor-selection";
 import RentComparisonChart from "@/components/rent-comparison-chart";
 import UnitListingsTable from "@/components/unit-listings-table";
+import { useWorkflowState } from "@/hooks/use-workflow-state";
 import type { Property, PropertyAnalysis, ScrapedProperty } from "@shared/schema";
 
 interface PropertyWithAnalysis {
@@ -81,6 +82,7 @@ export default function Summarize({ params }: { params: { id: string } }) {
   const [scrapingResults, setScrapingResults] = useState<ScrapingResult[]>([]);
   const [showVacancyChart, setShowVacancyChart] = useState(false);
   const { toast } = useToast();
+  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(params.id);
 
   const propertyQuery = useQuery<PropertyWithAnalysis>({
     queryKey: ['/api/properties', params.id],
@@ -89,6 +91,31 @@ export default function Summarize({ params }: { params: { id: string } }) {
   const competitorsQuery = useQuery<ScrapedProperty[]>({
     queryKey: ['/api/competitors'],
   });
+
+  // Load workflow state on mount and restore selections
+  useEffect(() => {
+    const initializeState = async () => {
+      const loadedState = await loadWorkflowState();
+      if (loadedState && loadedState.selectedCompetitorIds && competitorsQuery.data) {
+        const selected = competitorsQuery.data.filter(comp => 
+          loadedState.selectedCompetitorIds?.includes(comp.id)
+        );
+        if (selected.length > 0) {
+          setSelectedCompetitors(selected);
+          setShowChart(true);
+          // Check if scraping was completed
+          if (loadedState.stage === 'summarize-completed') {
+            setScrapingStage('completed');
+            setShowVacancyChart(true);
+          }
+        }
+      }
+    };
+
+    if (competitorsQuery.data) {
+      initializeState();
+    }
+  }, [competitorsQuery.data, params.id]);
 
   // Vacancy data query - triggered after scraping completes
   const vacancyQuery = useQuery<VacancyData>({
@@ -145,21 +172,42 @@ export default function Summarize({ params }: { params: { id: string } }) {
       setSelectedCompetitors(selected);
       setShowChart(true);
       
+      // Save workflow state with selected competitors
+      await saveWorkflowState({
+        stage: 'summarize-in-progress',
+        selectedCompetitorIds: selectedIds
+      });
+      
       // Start unit scraping workflow
       setScrapingStage('scraping');
       try {
         await scrapingMutation.mutateAsync(selectedIds);
+        // Save completed state after successful scraping
+        await saveWorkflowState({
+          stage: 'summarize-completed',
+          selectedCompetitorIds: selectedIds
+        });
       } catch (error) {
         console.error('Failed to start scraping:', error);
       }
     }
   };
 
-  const handleContinueToAnalyze = () => {
+  const handleContinueToAnalyze = async () => {
+    // Save workflow state before navigating
+    await saveWorkflowState({
+      stage: 'analyze',
+      selectedCompetitorIds: selectedCompetitors.map(c => c.id)
+    });
     setLocation(`/analyze/${params.id}`);
   };
 
-  const handleBackToCompetitors = () => {
+  const handleBackToCompetitors = async () => {
+    // Update workflow state but don't clear data
+    await saveWorkflowState({
+      stage: 'summarize',
+      selectedCompetitorIds: [] // Still save empty to indicate going back
+    });
     setShowChart(false);
     setShowVacancyChart(false);
     setScrapingStage('none');
