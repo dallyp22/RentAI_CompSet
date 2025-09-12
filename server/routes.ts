@@ -407,42 +407,155 @@ Please provide your analysis in this exact JSON format:
     }
   });
 
-  // Get property with analysis
+  // Get property with analysis and linked scraped data
   app.get("/api/properties/:id", async (req, res) => {
     try {
-      const property = await storage.getProperty(req.params.id);
+      const propertyId = req.params.id;
+      console.log('[GET_PROPERTY] Fetching property:', propertyId);
+      
+      const property = await storage.getProperty(propertyId);
       if (!property) {
+        console.log('[GET_PROPERTY] Property not found:', propertyId);
         return res.status(404).json({ message: "Property not found" });
       }
 
       const analysis = await storage.getPropertyAnalysis(property.id);
-      res.json({ property, analysis });
+      
+      // Check for linked scraped property data
+      let scrapedData = null;
+      let scrapingJobStatus = null;
+      
+      // Get scraping jobs for this property
+      const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId);
+      console.log('[GET_PROPERTY] Found', scrapingJobs.length, 'scraping jobs for property');
+      
+      if (scrapingJobs.length > 0) {
+        // Get the most recent completed job
+        const completedJob = scrapingJobs
+          .filter(job => job.status === "completed")
+          .sort((a, b) => {
+            const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return bTime - aTime;
+          })[0];
+        
+        if (completedJob) {
+          console.log('[GET_PROPERTY] Found completed scraping job:', completedJob.id);
+          scrapingJobStatus = completedJob.status;
+          
+          // Get scraped properties from this job
+          const scrapedProperties = await storage.getScrapedPropertiesByJob(completedJob.id);
+          
+          // Find the subject property (marked as isSubjectProperty)
+          const subjectProperty = scrapedProperties.find(p => p.isSubjectProperty === true);
+          
+          if (subjectProperty) {
+            console.log('[GET_PROPERTY] Found subject scraped property:', subjectProperty.name);
+            
+            // Get units for the subject property
+            const scrapedUnits = await storage.getScrapedUnitsByProperty(subjectProperty.id);
+            console.log('[GET_PROPERTY] Found', scrapedUnits.length, 'scraped units');
+            
+            scrapedData = {
+              scrapedPropertyId: subjectProperty.id,
+              scrapedPropertyName: subjectProperty.name,
+              scrapedPropertyAddress: subjectProperty.address,
+              scrapedPropertyUrl: subjectProperty.url,
+              matchScore: subjectProperty.matchScore,
+              scrapingJobId: completedJob.id,
+              unitsCount: scrapedUnits.length,
+              hasScrapedData: true
+            };
+          } else {
+            console.warn('[GET_PROPERTY] ⚠️ No subject property found in scraped data');
+            console.log('[GET_PROPERTY] Total scraped properties in job:', scrapedProperties.length);
+          }
+        } else {
+          // Check if there's a pending or failed job
+          const latestJob = scrapingJobs[0];
+          if (latestJob) {
+            scrapingJobStatus = latestJob.status;
+            console.log('[GET_PROPERTY] Latest scraping job status:', scrapingJobStatus);
+          }
+        }
+      } else {
+        console.log('[GET_PROPERTY] ⚠️ No scraping jobs found for property');
+      }
+      
+      // Return property with analysis and scraped data info
+      const response = {
+        property,
+        analysis,
+        scrapedData,
+        scrapingJobStatus,
+        dataSource: scrapedData ? 'scraped' : 'manual'
+      };
+      
+      console.log('[GET_PROPERTY] Returning property with data source:', response.dataSource);
+      res.json(response);
     } catch (error) {
-      console.error("Error fetching property:", error);
+      console.error("[GET_PROPERTY] Error fetching property:", error);
       res.status(500).json({ message: "Failed to fetch property" });
     }
   });
 
-  // Get all competitor properties (using scraped data instead of legacy competitors)
+  // Get all competitor properties (using scraped data only)
   app.get("/api/competitors", async (req, res) => {
     try {
-      // Get all scraped competitor properties using proper storage method
-      const scrapedCompetitors = await storage.getAllScrapedCompetitors();
-      
-      // Debug logging to understand what's being returned
+      console.log('[GET_COMPETITORS] ===========================================');
       console.log('[GET_COMPETITORS] Fetching scraped competitors...');
-      console.log('[GET_COMPETITORS] Total scraped competitors found:', scrapedCompetitors.length);
       
-      // Also check if there's a subject property marked
-      const subjectProperty = await storage.getSubjectScrapedProperty();
+      // Get all scraped competitor properties using proper storage method
+      const allScrapedProperties = await storage.getAllScrapedCompetitors();
+      console.log('[GET_COMPETITORS] Total scraped properties found:', allScrapedProperties.length);
+      
+      // Filter out the subject property to get only competitors
+      const scrapedCompetitors = allScrapedProperties.filter(p => !p.isSubjectProperty);
+      console.log('[GET_COMPETITORS] Actual competitors (excluding subject):', scrapedCompetitors.length);
+      
+      // Check if there's a subject property marked
+      const subjectProperty = allScrapedProperties.find(p => p.isSubjectProperty === true);
       if (subjectProperty) {
-        console.log('[GET_COMPETITORS] Subject property found:', subjectProperty.name);
+        console.log('[GET_COMPETITORS] ✅ Subject property found:', subjectProperty.name);
         console.log('[GET_COMPETITORS] Subject property ID:', subjectProperty.id);
+        console.log('[GET_COMPETITORS] Subject property URL:', subjectProperty.url);
       } else {
         console.log('[GET_COMPETITORS] ⚠️ WARNING: No subject property marked with isSubjectProperty: true');
+        console.log('[GET_COMPETITORS] This may cause issues with vacancy analysis');
       }
       
-      // Return only authentic scraped data - no placeholder values
+      // Log sample of competitor data for debugging
+      if (scrapedCompetitors.length > 0) {
+        console.log('[GET_COMPETITORS] Sample competitor data:');
+        scrapedCompetitors.slice(0, 3).forEach((comp, idx) => {
+          console.log(`[GET_COMPETITORS]   ${idx + 1}. ${comp.name}`);
+          console.log(`[GET_COMPETITORS]      Address: ${comp.address}`);
+          console.log(`[GET_COMPETITORS]      URL: ${comp.url}`);
+          console.log(`[GET_COMPETITORS]      Match Score: ${comp.matchScore}`);
+        });
+      }
+      
+      // Verify this is real scraped data by checking for apartments.com URLs
+      const realScrapedCount = scrapedCompetitors.filter(c => 
+        c.url && c.url.includes('apartments.com')
+      ).length;
+      console.log('[GET_COMPETITORS] Properties with valid apartments.com URLs:', realScrapedCount);
+      
+      if (scrapedCompetitors.length === 0) {
+        console.log('[GET_COMPETITORS] ⚠️ No competitor properties found');
+        console.log('[GET_COMPETITORS] Possible reasons:');
+        console.log('[GET_COMPETITORS]   1. No scraping job has been run yet');
+        console.log('[GET_COMPETITORS]   2. Scraping job failed');
+        console.log('[GET_COMPETITORS]   3. All scraped properties are marked as subject');
+        
+        return res.json({
+          competitors: [],
+          message: "No competitor properties available. Please run property scraping first.",
+          dataSource: "none"
+        });
+      }
+      
+      // Return only authentic scraped competitor data
       const competitors = scrapedCompetitors.map(scrapedProp => ({
         id: scrapedProp.id,
         name: scrapedProp.name,
@@ -451,13 +564,17 @@ Please provide your analysis in this exact JSON format:
         distance: scrapedProp.distance,
         matchScore: scrapedProp.matchScore,
         createdAt: scrapedProp.createdAt,
-        isSubjectProperty: scrapedProp.isSubjectProperty
+        isSubjectProperty: false  // Always false for competitors
       }));
 
-      console.log(`[GET_COMPETITORS] Returning ${competitors.length} scraped properties as competitors`);
+      console.log(`[GET_COMPETITORS] ✅ Returning ${competitors.length} scraped competitors`);
+      console.log('[GET_COMPETITORS] Data source: Real Scrapezy scraped data');
+      console.log('[GET_COMPETITORS] ===========================================');
+      
+      // Return array directly for backward compatibility, but log that it's scraped data
       res.json(competitors);
     } catch (error) {
-      console.error("Error fetching competitors:", error);
+      console.error("[GET_COMPETITORS] ❌ Error fetching competitors:", error);
       res.status(500).json({ message: "Failed to fetch competitor properties" });
     }
   });
@@ -544,14 +661,53 @@ Please provide your analysis in this exact JSON format:
   // Generate filtered analysis based on filter criteria
   app.post("/api/filtered-analysis", async (req, res) => {
     try {
+      console.log('[FILTERED_ANALYSIS] ===========================================');
+      console.log('[FILTERED_ANALYSIS] Starting filtered analysis generation');
+      
       const filterData = filterCriteriaSchema.parse(req.body);
+      console.log('[FILTERED_ANALYSIS] Filter criteria:', JSON.stringify(filterData, null, 2));
       
-      // Get subject property for analysis context
+      // Get subject property for analysis context - CRITICAL for accurate analysis
       const subjectProperty = await storage.getSubjectScrapedProperty();
-      const propertyId = subjectProperty?.id || "default";
       
-      // Generate filtered analysis
-      const analysis = await storage.generateFilteredAnalysis(propertyId, filterData);
+      if (!subjectProperty) {
+        console.error('[FILTERED_ANALYSIS] ❌ No subject property found!');
+        console.log('[FILTERED_ANALYSIS] Cannot generate analysis without subject property');
+        return res.status(404).json({ 
+          message: "No subject property found. Please complete the scraping workflow first.",
+          error: "SUBJECT_PROPERTY_NOT_FOUND",
+          suggestion: "Run the property scraping workflow and ensure a subject property is identified"
+        });
+      }
+      
+      console.log('[FILTERED_ANALYSIS] ✅ Subject property found:', subjectProperty.name);
+      console.log('[FILTERED_ANALYSIS] Subject property ID:', subjectProperty.id);
+      
+      // Check if we have scraped units for the subject property
+      const subjectUnits = await storage.getScrapedUnitsByProperty(subjectProperty.id);
+      console.log('[FILTERED_ANALYSIS] Subject property units count:', subjectUnits.length);
+      
+      if (subjectUnits.length === 0) {
+        console.warn('[FILTERED_ANALYSIS] ⚠️ No units found for subject property');
+        console.log('[FILTERED_ANALYSIS] This may indicate unit scraping hasn\'t been completed');
+      }
+      
+      // Get competitor properties to verify we have comparison data
+      const allScrapedProperties = await storage.getAllScrapedCompetitors();
+      const competitors = allScrapedProperties.filter(p => !p.isSubjectProperty);
+      console.log('[FILTERED_ANALYSIS] Competitor properties available:', competitors.length);
+      
+      // Generate filtered analysis using real scraped data
+      console.log('[FILTERED_ANALYSIS] Generating analysis from scraped data...');
+      const analysis = await storage.generateFilteredAnalysis(subjectProperty.id, filterData);
+      
+      // Log analysis summary
+      console.log('[FILTERED_ANALYSIS] Analysis generated successfully:');
+      console.log('[FILTERED_ANALYSIS]   - Subject units matching filters:', analysis.subjectUnits.length);
+      console.log('[FILTERED_ANALYSIS]   - Competitor units for comparison:', analysis.competitorUnits.length);
+      console.log('[FILTERED_ANALYSIS]   - Market position:', analysis.marketPosition);
+      console.log('[FILTERED_ANALYSIS]   - Percentile rank:', analysis.percentileRank);
+      console.log('[FILTERED_ANALYSIS]   - Data source: Real Scrapezy scraped data');
       
       // Generate AI insights if OpenAI is configured
       if (process.env.OPENAI_API_KEY) {
@@ -615,9 +771,10 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         }
       }
       
+      console.log('[FILTERED_ANALYSIS] ===========================================');
       res.json(analysis);
     } catch (error) {
-      console.error("Error generating filtered analysis:", error);
+      console.error("[FILTERED_ANALYSIS] ❌ Error generating filtered analysis:", error);
       res.status(500).json({ message: "Failed to generate filtered analysis" });
     }
   });
@@ -1006,10 +1163,16 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // Comprehensive vacancy summary API endpoint
   app.get("/api/vacancy/summary", async (req, res) => {
     try {
+      console.log('[VACANCY_SUMMARY] ===========================================');
+      console.log('[VACANCY_SUMMARY] Starting vacancy summary generation');
+      
       const { propertyId, competitorIds } = req.query;
+      console.log('[VACANCY_SUMMARY] Property ID:', propertyId);
+      console.log('[VACANCY_SUMMARY] Competitor IDs:', competitorIds);
       
       // Validate parameters
       if (!propertyId) {
+        console.error('[VACANCY_SUMMARY] ❌ No propertyId provided');
         return res.status(400).json({ message: "propertyId is required" });
       }
       
@@ -1017,10 +1180,11 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
                                  competitorIds ? [competitorIds] : [];
 
       if (competitorIdsArray.length === 0) {
+        console.error('[VACANCY_SUMMARY] ❌ No competitor IDs provided');
         return res.status(400).json({ message: "At least one competitorId is required" });
       }
 
-      console.log(`Vacancy summary request for property ${propertyId} with ${competitorIdsArray.length} competitors`);
+      console.log(`[VACANCY_SUMMARY] Processing ${competitorIdsArray.length} competitors`);
 
       // Get subject property - need to find the scraped property marked as isSubjectProperty
       let subjectProperty = null;
@@ -1220,11 +1384,17 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         }
       };
 
-      console.log(`Vacancy summary completed for ${subjectData.name}: ${subjectData.vacancyRate}% vacancy rate`);
+      console.log('[VACANCY_SUMMARY] ✅ Vacancy summary completed successfully');
+      console.log('[VACANCY_SUMMARY] Subject property:', subjectData.name);
+      console.log('[VACANCY_SUMMARY] Vacancy rate:', subjectData.vacancyRate + '%');
+      console.log('[VACANCY_SUMMARY] Total units analyzed:', subjectUnits.length);
+      console.log('[VACANCY_SUMMARY] Data source: Real Scrapezy scraped data');
+      console.log('[VACANCY_SUMMARY] ===========================================');
       res.json(response);
 
     } catch (error) {
-      console.error("Error generating vacancy summary:", error);
+      console.error("[VACANCY_SUMMARY] ❌ Error generating vacancy summary:", error);
+      console.log('[VACANCY_SUMMARY] ===========================================');
       res.status(500).json({ 
         message: "Failed to generate vacancy summary", 
         error: error instanceof Error ? error.message : "Unknown error"
