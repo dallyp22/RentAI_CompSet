@@ -622,7 +622,7 @@ export default function Summarize({ params }: { params: { id: string } }) {
               <Button 
                 onClick={handleContinueToAnalyze}
                 disabled={scrapingStage === 'scraping'}
-                data-testid="button-proceed-analysis"
+                data-testid="button-continue-to-analyze"
               >
                 {scrapingStage === 'scraping' ? (
                   <>
