@@ -55,25 +55,25 @@ export default function CompetitiveAdvantagesGrid({
 
   return (
     <div 
-      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" 
+      className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" 
       data-testid="competitive-advantages-grid"
     >
       {edges.map((edge) => (
         <Card 
           key={edge.key}
-          className={`border-2 ${getStatusColor(edge.data.status)} transition-all hover:shadow-lg`}
+          className={`h-full border-2 ${getStatusColor(edge.data.status)} transition-all hover:shadow-lg`}
           data-testid={`edge-card-${edge.key}`}
         >
-          <CardContent className="p-4 space-y-3">
+          <CardContent className="p-4 h-full flex flex-col">
             {/* Header with icon and title */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 {edge.icon}
-                <span className="font-semibold text-sm">{edge.title}</span>
+                <span className="font-semibold text-sm truncate">{edge.title}</span>
               </div>
               <Badge 
                 variant="outline" 
-                className="text-xs"
+                className="text-xs whitespace-nowrap shrink-0"
                 data-testid={`status-badge-${edge.key}`}
               >
                 {getStatusBadge(edge.data.status)}
@@ -81,30 +81,42 @@ export default function CompetitiveAdvantagesGrid({
             </div>
 
             {/* Edge value display */}
-            <div className="text-center py-2">
+            <div className="flex-1 flex items-center justify-center py-3">
               <div 
-                className="text-2xl font-bold"
+                className="text-xl lg:text-2xl font-bold text-center leading-tight"
                 data-testid={`edge-value-${edge.key}`}
               >
                 {edge.key === "pricing" && edge.data.edge !== 0 && (
-                  edge.data.edge > 0 ? `+${edge.data.edge}%` : `${edge.data.edge}%`
+                  <div className="flex flex-col items-center">
+                    <span>{edge.data.edge > 0 ? `+${edge.data.edge}%` : `${edge.data.edge}%`}</span>
+                  </div>
                 )}
                 {edge.key === "size" && edge.data.edge !== 0 && (
-                  edge.data.edge > 0 ? `+${edge.data.edge} sq ft` : `${edge.data.edge} sq ft`
+                  <div className="flex flex-col items-center">
+                    <span>{edge.data.edge > 0 ? `+${edge.data.edge}` : `${edge.data.edge}`}</span>
+                    <span className="text-sm font-normal">sq ft</span>
+                  </div>
                 )}
                 {edge.key === "availability" && (
-                  edge.data.edge !== 0 ? `${Math.abs(edge.data.edge)} units` : "Equal"
+                  <div className="flex flex-col items-center">
+                    <span>{edge.data.edge !== 0 ? `${Math.abs(edge.data.edge)}` : "0"}</span>
+                    <span className="text-sm font-normal">
+                      {edge.data.edge !== 0 ? "units" : "equal"}
+                    </span>
+                  </div>
                 )}
                 {edge.key === "amenities" && (
-                  `${edge.data.edge}/100`
+                  <div className="flex flex-col items-center">
+                    <span>{edge.data.edge}/100</span>
+                  </div>
                 )}
               </div>
             </div>
 
             {/* Description label */}
-            <div className="text-center">
+            <div className="text-center mt-auto">
               <span 
-                className="text-xs font-medium"
+                className="text-xs font-medium leading-tight block"
                 data-testid={`edge-label-${edge.key}`}
               >
                 {edge.data.label}
