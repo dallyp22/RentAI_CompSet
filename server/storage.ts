@@ -66,6 +66,7 @@ export interface IStorage {
   getScrapedPropertiesByJob(scrapingJobId: string): Promise<ScrapedProperty[]>;
   getAllScrapedCompetitors(): Promise<ScrapedProperty[]>;
   getSelectedScrapedProperties(ids: string[]): Promise<ScrapedProperty[]>;
+  updateScrapedProperty(id: string, updates: Partial<ScrapedProperty>): Promise<ScrapedProperty | undefined>;
   
   createScrapedUnit(unit: InsertScrapedUnit): Promise<ScrapedUnit>;
   getScrapedUnitsByProperty(propertyId: string): Promise<ScrapedUnit[]>;
@@ -296,6 +297,15 @@ export class MemStorage implements IStorage {
 
   async getSelectedScrapedProperties(ids: string[]): Promise<ScrapedProperty[]> {
     return ids.map(id => this.scrapedProperties.get(id)).filter(Boolean) as ScrapedProperty[];
+  }
+
+  async updateScrapedProperty(id: string, updates: Partial<ScrapedProperty>): Promise<ScrapedProperty | undefined> {
+    const property = this.scrapedProperties.get(id);
+    if (!property) return undefined;
+    
+    const updatedProperty = { ...property, ...updates };
+    this.scrapedProperties.set(id, updatedProperty);
+    return updatedProperty;
   }
 
   async createScrapedUnit(insertUnit: InsertScrapedUnit): Promise<ScrapedUnit> {

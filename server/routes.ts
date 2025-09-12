@@ -429,6 +429,19 @@ Please provide your analysis in this exact JSON format:
       // Get all scraped competitor properties using proper storage method
       const scrapedCompetitors = await storage.getAllScrapedCompetitors();
       
+      // Debug logging to understand what's being returned
+      console.log('[GET_COMPETITORS] Fetching scraped competitors...');
+      console.log('[GET_COMPETITORS] Total scraped competitors found:', scrapedCompetitors.length);
+      
+      // Also check if there's a subject property marked
+      const subjectProperty = await storage.getSubjectScrapedProperty();
+      if (subjectProperty) {
+        console.log('[GET_COMPETITORS] Subject property found:', subjectProperty.name);
+        console.log('[GET_COMPETITORS] Subject property ID:', subjectProperty.id);
+      } else {
+        console.log('[GET_COMPETITORS] ⚠️ WARNING: No subject property marked with isSubjectProperty: true');
+      }
+      
       // Return only authentic scraped data - no placeholder values
       const competitors = scrapedCompetitors.map(scrapedProp => ({
         id: scrapedProp.id,
@@ -441,7 +454,7 @@ Please provide your analysis in this exact JSON format:
         isSubjectProperty: scrapedProp.isSubjectProperty
       }));
 
-      console.log(`Returning ${competitors.length} scraped properties as competitors`);
+      console.log(`[GET_COMPETITORS] Returning ${competitors.length} scraped properties as competitors`);
       res.json(competitors);
     } catch (error) {
       console.error("Error fetching competitors:", error);
@@ -1662,7 +1675,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           scrapedProperties.push(scrapedProperty);
         }
         
-        // FALLBACK: If no subject property found but we have a decent match, use it
+        // FALLBACK 1: If no subject property found but we have a decent match (>=40%), use it
         if (!subjectPropertyFound && bestMatch.property && bestMatch.score >= 40) {
           console.log('[SUBJECT_FALLBACK] No exact subject match found, using best match as fallback');
           console.log('[SUBJECT_FALLBACK] Best match:', bestMatch.property.name);
@@ -1672,10 +1685,65 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           // Find and update the scraped property to mark it as subject
           const fallbackProperty = scrapedProperties.find(p => p.url === bestMatch.property.url);
           if (fallbackProperty) {
-            // Update the isSubjectProperty flag (would need storage method in real implementation)
-            fallbackProperty.isSubjectProperty = true;
+            // Update the isSubjectProperty flag in storage
+            const updated = await storage.updateScrapedProperty(fallbackProperty.id, {
+              isSubjectProperty: true
+            });
+            
+            if (updated) {
+              // Also update the local object for consistency
+              fallbackProperty.isSubjectProperty = true;
+              subjectPropertyFound = true;
+              console.log('[SUBJECT_FALLBACK] ✅ Successfully marked fallback property as subject');
+            } else {
+              console.error('[SUBJECT_FALLBACK] ❌ Failed to update property in storage');
+            }
+          }
+        }
+        
+        // FALLBACK 2: If still no subject property (all matches < 40%), mark the BEST match regardless
+        if (!subjectPropertyFound && bestMatch.property && scrapedProperties.length > 0) {
+          console.log('[SUBJECT_FALLBACK_FORCED] No matches above 40%, forcing best match as subject');
+          console.log('[SUBJECT_FALLBACK_FORCED] Best match:', bestMatch.property.name);
+          console.log('[SUBJECT_FALLBACK_FORCED] Match score:', bestMatch.score, '% (below threshold)');
+          console.log('[SUBJECT_FALLBACK_FORCED] URL:', bestMatch.property.url);
+          console.log('[SUBJECT_FALLBACK_FORCED] ⚠️ This is a low-confidence match but ensuring we have a subject property');
+          
+          const forcedFallback = scrapedProperties.find(p => p.url === bestMatch.property.url);
+          if (forcedFallback) {
+            // Update the isSubjectProperty flag in storage
+            const updated = await storage.updateScrapedProperty(forcedFallback.id, {
+              isSubjectProperty: true
+            });
+            
+            if (updated) {
+              // Also update the local object for consistency
+              forcedFallback.isSubjectProperty = true;
+              subjectPropertyFound = true;
+              console.log('[SUBJECT_FALLBACK_FORCED] ✅ Forced property marked as subject');
+            } else {
+              console.error('[SUBJECT_FALLBACK_FORCED] ❌ Failed to update property in storage');
+            }
+          }
+        }
+        
+        // FALLBACK 3: If we somehow still don't have a subject (e.g., no properties scraped), mark first property
+        if (!subjectPropertyFound && scrapedProperties.length > 0) {
+          console.log('[SUBJECT_FALLBACK_FIRST] Emergency fallback: marking first scraped property as subject');
+          const firstProperty = scrapedProperties[0];
+          
+          const updated = await storage.updateScrapedProperty(firstProperty.id, {
+            isSubjectProperty: true
+          });
+          
+          if (updated) {
+            firstProperty.isSubjectProperty = true;
             subjectPropertyFound = true;
-            console.log('[SUBJECT_FALLBACK] ✅ Successfully marked fallback property as subject');
+            console.log('[SUBJECT_FALLBACK_FIRST] ✅ First property marked as subject');
+            console.log('[SUBJECT_FALLBACK_FIRST] Property:', firstProperty.name);
+            console.log('[SUBJECT_FALLBACK_FIRST] URL:', firstProperty.url);
+          } else {
+            console.error('[SUBJECT_FALLBACK_FIRST] ❌ Failed to update first property in storage');
           }
         }
 
@@ -1714,12 +1782,18 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             totalScraped: allProperties.length,
             totalStored: scrapedProperties.length,
             matchThreshold: 50, // Updated threshold
-            fallbackUsed: !subjectPropertyFound && bestMatch.score >= 40,
+            fallbackUsed: bestMatch.score < 50 && subjectPropertyFound,
+            fallbackType: bestMatch.score >= 50 ? 'exact_match' : 
+                         bestMatch.score >= 40 ? 'good_match_fallback' :
+                         bestMatch.score > 0 ? 'forced_best_match' : 
+                         'first_property_fallback',
             bestMatchScore: bestMatch.score,
             subjectPropertyData: {
               name: property.propertyName,
               address: property.address
-            }
+            },
+            subjectPropertyMarked: subjectPropertyFound,
+            markedProperty: scrapedProperties.find(p => p.isSubjectProperty) || null
           }
         });
 
