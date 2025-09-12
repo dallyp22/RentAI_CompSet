@@ -504,7 +504,36 @@ export class MemStorage implements IStorage {
     // Get subject property (look for isSubjectProperty flag)
     const subjectProperty = await this.getSubjectScrapedProperty();
     if (!subjectProperty) {
-      throw new Error("Subject property not found");
+      // Return a default analysis when no scraped data is available
+      return {
+        marketPosition: "No Data Available",
+        pricingPowerScore: 0,
+        competitiveAdvantages: ["Scraping Required"],
+        recommendations: ["Please complete competitor scraping to generate analysis"],
+        unitCount: 0,
+        avgRent: 0,
+        percentileRank: 0,
+        locationScore: 0,
+        amenityScore: 0,
+        pricePerSqFt: 0,
+        subjectUnits: [],
+        competitorUnits: [],
+        competitiveEdges: {
+          pricing: { edge: 0, label: "No data", status: "neutral" },
+          size: { edge: 0, label: "No data", status: "neutral" },
+          availability: { edge: 0, label: "No data", status: "neutral" },
+          amenities: { edge: 0, label: "No data", status: "neutral" }
+        },
+        aiInsights: [
+          "Complete competitor property scraping to enable analysis",
+          "Add competitor properties from the Summarize page",
+          "Analysis requires unit-level data from apartments.com"
+        ],
+        subjectAvgRent: 0,
+        competitorAvgRent: 0,
+        subjectAvgSqFt: 0,
+        competitorAvgSqFt: 0
+      };
     }
     
     // Separate subject and competitor units
