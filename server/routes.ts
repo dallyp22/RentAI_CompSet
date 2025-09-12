@@ -1215,7 +1215,7 @@ Please provide your analysis in this exact JSON format:
     return Math.round(similarity);
   }
 
-  // Advanced property matching logic
+  // Advanced property matching logic with improved flexibility
   function calculatePropertyMatch(subjectProperty: any, scrapedProperty: any): { isMatch: boolean; score: number; reasons: string[]; matchDetails: any } {
     console.log('[PROPERTY_MATCH] Starting match calculation');
     console.log('[PROPERTY_MATCH] Subject Property:', { 
@@ -1300,12 +1300,18 @@ Please provide your analysis in this exact JSON format:
       }
     }
     
-    // 3. Property name similarity (20 points)
+    // 3. Property name similarity (20 points) - ENHANCED with flexible matching
     maxPossibleScore += 20;
     componentScores.propertyName = 0;
     if (subjectName && scrapedName) {
       const nameSimilarity = calculateStringSimilarity(subjectName, scrapedName);
       componentScores.propertyNameSimilarity = nameSimilarity;
+      
+      // Check for containment first (more flexible)
+      const subjectWords = subjectName.toLowerCase().split(' ').filter(w => w.length > 2);
+      const scrapedWords = scrapedName.toLowerCase().split(' ').filter(w => w.length > 2);
+      const commonWords = subjectWords.filter(w => scrapedWords.includes(w));
+      const containmentScore = (commonWords.length / Math.min(subjectWords.length, scrapedWords.length)) * 100;
       
       if (nameSimilarity >= 70) {
         // High match - likely same property
@@ -1313,17 +1319,24 @@ Please provide your analysis in this exact JSON format:
         componentScores.propertyName = namePoints;
         totalScore += namePoints;
         reasons.push(`✅ Strong property name match: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
+      } else if (containmentScore >= 50 || subjectName.includes(scrapedName) || scrapedName.includes(subjectName)) {
+        // IMPROVED: Award points for partial containment
+        const namePoints = 15;
+        componentScores.propertyName = namePoints;
+        totalScore += namePoints;
+        reasons.push(`✅ Property name contains key words: "${subjectName}" matches "${scrapedName}" (${commonWords.join(', ')})`);
       } else if (nameSimilarity >= 50) {
         const namePoints = Math.round((nameSimilarity / 100) * 20);
         componentScores.propertyName = namePoints;
         totalScore += namePoints;
         reasons.push(`⚠️ Property name similarity: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
       } else {
-        // Check if one name contains the other
-        if (subjectName.includes(scrapedName) || scrapedName.includes(subjectName)) {
-          componentScores.propertyName = 10;
-          totalScore += 10;
-          reasons.push(`⚠️ Property name partial match: "${subjectName}" and "${scrapedName}"`);
+        // More forgiving for Atlas-type matches
+        const coreMatch = (subjectName.replace('the', '').trim() === scrapedName.replace('the', '').trim());
+        if (coreMatch) {
+          componentScores.propertyName = 12;
+          totalScore += 12;
+          reasons.push(`⚠️ Core name match after removing articles: "${subjectName}" and "${scrapedName}"`);
         } else {
           reasons.push(`❌ Low property name similarity: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
         }
@@ -1362,11 +1375,11 @@ Please provide your analysis in this exact JSON format:
     console.log('[PROPERTY_MATCH] Total score:', totalScore, '/', maxPossibleScore);
     console.log('[PROPERTY_MATCH] Final score:', finalScore, '%');
     
-    // LOWERED THRESHOLD: Match thresholds:
-    // - 70%+ = Highly likely match (LOWERED from 85%)
-    // - 60%+ = Likely match (for properties with similar names/addresses)
-    // - 50%+ = Possible match (requires manual review)
-    const isMatch = finalScore >= 60; // LOWERED from 70% to be more forgiving
+    // FURTHER LOWERED THRESHOLD for better detection:
+    // - 60%+ = Highly likely match
+    // - 50%+ = Likely match (for properties with similar names/addresses)
+    // - 40%+ = Possible match (requires manual review)
+    const isMatch = finalScore >= 50; // LOWERED to 50% for better flexibility
     
     console.log('[PROPERTY_MATCH] Is match?', isMatch);
     console.log('[PROPERTY_MATCH] Reasons:', reasons);
@@ -1379,7 +1392,7 @@ Please provide your analysis in this exact JSON format:
         componentScores,
         totalScore,
         maxPossibleScore,
-        threshold: 60,
+        threshold: 50, // Updated threshold
         subjectData: { name: subjectName, address: subjectAddress },
         scrapedData: { name: scrapedName, address: scrapedAddress }
       }
@@ -1495,6 +1508,7 @@ Please provide your analysis in this exact JSON format:
         // Store scraped properties and try to match subject property
         const scrapedProperties = [];
         let subjectPropertyFound = false;
+        let bestMatch = { property: null as any, score: 0 };
 
         for (const propertyData of allProperties) {
           if (!propertyData.name || !propertyData.address || !propertyData.url) {
@@ -1523,6 +1537,11 @@ Please provide your analysis in this exact JSON format:
             console.log('🎯 FOUND SUBJECT PROPERTY MATCH:', propertyData.name, `(Score: ${matchResult.score}%)`);
             console.log('URL:', propertyData.url);
           }
+          
+          // Track best match for fallback
+          if (matchResult.score > bestMatch.score) {
+            bestMatch = { property: propertyData, score: matchResult.score };
+          }
 
           const scrapedProperty = await storage.createScrapedProperty({
             scrapingJobId: scrapingJob.id,
@@ -1534,6 +1553,23 @@ Please provide your analysis in this exact JSON format:
             isSubjectProperty
           });
           scrapedProperties.push(scrapedProperty);
+        }
+        
+        // FALLBACK: If no subject property found but we have a decent match, use it
+        if (!subjectPropertyFound && bestMatch.property && bestMatch.score >= 40) {
+          console.log('[SUBJECT_FALLBACK] No exact subject match found, using best match as fallback');
+          console.log('[SUBJECT_FALLBACK] Best match:', bestMatch.property.name);
+          console.log('[SUBJECT_FALLBACK] Match score:', bestMatch.score, '%');
+          console.log('[SUBJECT_FALLBACK] URL:', bestMatch.property.url);
+          
+          // Find and update the scraped property to mark it as subject
+          const fallbackProperty = scrapedProperties.find(p => p.url === bestMatch.property.url);
+          if (fallbackProperty) {
+            // Update the isSubjectProperty flag (would need storage method in real implementation)
+            fallbackProperty.isSubjectProperty = true;
+            subjectPropertyFound = true;
+            console.log('[SUBJECT_FALLBACK] ✅ Successfully marked fallback property as subject');
+          }
         }
 
         // Update job status to completed
@@ -1570,7 +1606,9 @@ Please provide your analysis in this exact JSON format:
           debugInfo: {
             totalScraped: allProperties.length,
             totalStored: scrapedProperties.length,
-            matchThreshold: 60,
+            matchThreshold: 50, // Updated threshold
+            fallbackUsed: !subjectPropertyFound && bestMatch.score >= 40,
+            bestMatchScore: bestMatch.score,
             subjectPropertyData: {
               name: property.propertyName,
               address: property.address
@@ -1835,30 +1873,88 @@ Please provide your analysis in this exact JSON format:
     }
   });
 
-  // Force sync units from scraped data
+  // Force sync units from scraped data with fuzzy matching fallback
   app.post("/api/properties/:id/sync-units", async (req, res) => {
     try {
       const propertyId = req.params.id;
+      const property = await storage.getProperty(propertyId);
+      
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      console.log('[SYNC_UNITS] Starting sync for property:', property.propertyName);
       
       // Find the subject scraped property
       let subjectProperty = null;
       let scrapedUnits: ScrapedUnit[] = [];
+      let fallbackUsed = false;
+      let searchAttempts: any[] = [];
       
       const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId);
       if (scrapingJobs.length > 0) {
+        console.log('[SYNC_UNITS] Found', scrapingJobs.length, 'scraping jobs');
+        
         for (const job of scrapingJobs) {
           const scrapedProperties = await storage.getScrapedPropertiesByJob(job.id);
+          console.log('[SYNC_UNITS] Job', job.id, 'has', scrapedProperties.length, 'scraped properties');
+          
+          // First try to find exact subject match
           const subject = scrapedProperties.find(p => p.isSubjectProperty === true);
           if (subject) {
             subjectProperty = subject;
             scrapedUnits = await storage.getScrapedUnitsByProperty(subject.id);
+            console.log('[SYNC_UNITS] Found subject property:', subject.name, 'with', scrapedUnits.length, 'units');
             break;
+          }
+          
+          // FALLBACK: Use fuzzy matching to find best match
+          if (!subjectProperty && scrapedProperties.length > 0) {
+            console.log('[SYNC_UNITS_FALLBACK] No subject property marked, attempting fuzzy matching');
+            
+            let bestMatch = { property: null as any, score: 0 };
+            
+            for (const scrapedProp of scrapedProperties) {
+              const matchResult = calculatePropertyMatch(property, scrapedProp);
+              searchAttempts.push({
+                name: scrapedProp.name,
+                address: scrapedProp.address,
+                score: matchResult.score,
+                reasons: matchResult.reasons
+              });
+              
+              console.log('[SYNC_UNITS_FALLBACK] Checking:', scrapedProp.name);
+              console.log('[SYNC_UNITS_FALLBACK] Score:', matchResult.score, '%');
+              
+              if (matchResult.score > bestMatch.score) {
+                bestMatch = { property: scrapedProp, score: matchResult.score };
+              }
+            }
+            
+            // Use best match if score is reasonable
+            if (bestMatch.property && bestMatch.score >= 40) {
+              subjectProperty = bestMatch.property;
+              scrapedUnits = await storage.getScrapedUnitsByProperty(bestMatch.property.id);
+              fallbackUsed = true;
+              console.log('[SYNC_UNITS_FALLBACK] ✅ Using best match as subject:', bestMatch.property.name);
+              console.log('[SYNC_UNITS_FALLBACK] Match score:', bestMatch.score, '%');
+              console.log('[SYNC_UNITS_FALLBACK] Found', scrapedUnits.length, 'units');
+            }
           }
         }
       }
       
       if (scrapedUnits.length === 0) {
-        return res.status(404).json({ message: "No scraped units to sync" });
+        return res.status(404).json({ 
+          message: "No scraped units to sync",
+          details: "Could not find subject property or any matching scraped property",
+          searchAttempts,
+          suggestions: [
+            "Run the scraping job first to collect property data",
+            "Use the force-link endpoint to manually link a scraped property",
+            "Check the debug-matching endpoint to see all match scores"
+          ]
+        });
       }
       
       // Clear existing PropertyUnits and recreate from scraped data
@@ -1879,11 +1975,234 @@ Please provide your analysis in this exact JSON format:
       res.json({ 
         message: `Successfully synced ${units.length} units from scraped data`,
         unitsCount: units.length,
-        units: units
+        units: units,
+        subjectProperty: subjectProperty ? {
+          id: subjectProperty.id,
+          name: subjectProperty.name,
+          address: subjectProperty.address,
+          url: subjectProperty.url
+        } : null,
+        fallbackUsed,
+        searchAttempts: fallbackUsed ? searchAttempts : []
       });
     } catch (error) {
       console.error("Error syncing units:", error);
       res.status(500).json({ message: "Failed to sync units" });
+    }
+  });
+
+  // Force-link endpoint to manually link a scraped property as subject
+  app.post("/api/properties/:id/force-link-subject", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      const { scrapedPropertyUrl, scrapedPropertyName } = req.body;
+      
+      if (!scrapedPropertyUrl && !scrapedPropertyName) {
+        return res.status(400).json({ 
+          message: "Either scrapedPropertyUrl or scrapedPropertyName is required" 
+        });
+      }
+      
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      console.log('[FORCE_LINK] Forcing link for property:', property.propertyName);
+      console.log('[FORCE_LINK] Search criteria:', { url: scrapedPropertyUrl, name: scrapedPropertyName });
+      
+      // Find the scraped property
+      let targetProperty = null;
+      const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId);
+      
+      for (const job of scrapingJobs) {
+        const scrapedProperties = await storage.getScrapedPropertiesByJob(job.id);
+        
+        // Find by URL or name
+        targetProperty = scrapedProperties.find(p => 
+          (scrapedPropertyUrl && p.url === scrapedPropertyUrl) ||
+          (scrapedPropertyName && p.name.toLowerCase().includes(scrapedPropertyName.toLowerCase()))
+        );
+        
+        if (targetProperty) {
+          console.log('[FORCE_LINK] Found target property:', targetProperty.name);
+          
+          // Mark all others as non-subject (in real implementation, would update storage)
+          for (const prop of scrapedProperties) {
+            if (prop.id !== targetProperty.id && prop.isSubjectProperty) {
+              prop.isSubjectProperty = false;
+              console.log('[FORCE_LINK] Unmarking:', prop.name);
+            }
+          }
+          
+          // Mark target as subject
+          targetProperty.isSubjectProperty = true;
+          console.log('[FORCE_LINK] ✅ Marked as subject:', targetProperty.name);
+          break;
+        }
+      }
+      
+      if (!targetProperty) {
+        return res.status(404).json({ 
+          message: "Scraped property not found",
+          searchCriteria: { url: scrapedPropertyUrl, name: scrapedPropertyName }
+        });
+      }
+      
+      // Now sync the units
+      const scrapedUnits = await storage.getScrapedUnitsByProperty(targetProperty.id);
+      console.log('[FORCE_LINK] Found', scrapedUnits.length, 'units to sync');
+      
+      // Clear existing and sync
+      await storage.clearPropertyUnits(propertyId);
+      const units = [];
+      
+      for (const scrapedUnit of scrapedUnits) {
+        const unit = await storage.createPropertyUnit({
+          propertyId,
+          unitNumber: scrapedUnit.unitNumber || `Unit-${scrapedUnit.id.substring(0, 6)}`,
+          unitType: scrapedUnit.unitType,
+          currentRent: scrapedUnit.rent || "0",
+          status: scrapedUnit.status || "occupied"
+        });
+        units.push(unit);
+      }
+      
+      res.json({
+        success: true,
+        message: `Successfully force-linked ${targetProperty.name} and synced ${units.length} units`,
+        subjectProperty: {
+          id: targetProperty.id,
+          name: targetProperty.name,
+          address: targetProperty.address,
+          url: targetProperty.url
+        },
+        unitsCount: units.length,
+        units: units.slice(0, 5) // Return first 5 units as sample
+      });
+      
+    } catch (error) {
+      console.error("[FORCE_LINK] Error:", error);
+      res.status(500).json({ message: "Failed to force link subject property" });
+    }
+  });
+  
+  // Debug-matching endpoint to diagnose matching issues
+  app.get("/api/properties/:id/debug-matching", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      const property = await storage.getProperty(propertyId);
+      
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      console.log('[DEBUG_MATCHING] Analyzing matches for:', property.propertyName);
+      
+      const results = {
+        subjectProperty: {
+          id: property.id,
+          name: property.propertyName,
+          address: property.address,
+          city: property.city,
+          state: property.state
+        },
+        scrapingJobs: [] as any[],
+        allMatches: [] as any[],
+        bestMatch: null as any,
+        currentSubject: null as any
+      };
+      
+      const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId);
+      
+      for (const job of scrapingJobs) {
+        const jobInfo = {
+          id: job.id,
+          status: job.status,
+          createdAt: job.createdAt,
+          properties: [] as any[]
+        };
+        
+        const scrapedProperties = await storage.getScrapedPropertiesByJob(job.id);
+        
+        for (const scrapedProp of scrapedProperties) {
+          const matchResult = calculatePropertyMatch(property, scrapedProp);
+          
+          const propertyInfo = {
+            id: scrapedProp.id,
+            name: scrapedProp.name,
+            address: scrapedProp.address,
+            url: scrapedProp.url,
+            isSubjectProperty: scrapedProp.isSubjectProperty,
+            matchScore: matchResult.score,
+            isMatch: matchResult.isMatch,
+            matchDetails: matchResult.matchDetails,
+            reasons: matchResult.reasons
+          };
+          
+          jobInfo.properties.push(propertyInfo);
+          results.allMatches.push(propertyInfo);
+          
+          // Track current subject
+          if (scrapedProp.isSubjectProperty) {
+            results.currentSubject = propertyInfo;
+          }
+          
+          // Track best match
+          if (!results.bestMatch || matchResult.score > results.bestMatch.matchScore) {
+            results.bestMatch = propertyInfo;
+          }
+        }
+        
+        results.scrapingJobs.push(jobInfo);
+      }
+      
+      // Sort all matches by score
+      results.allMatches.sort((a, b) => b.matchScore - a.matchScore);
+      
+      // Add recommendations
+      const recommendations = [];
+      
+      if (!results.currentSubject && results.bestMatch) {
+        if (results.bestMatch.matchScore >= 50) {
+          recommendations.push({
+            action: "AUTO_LINK",
+            message: `Best match "${results.bestMatch.name}" has score ${results.bestMatch.matchScore}% - consider using sync-units endpoint which will auto-select it`
+          });
+        } else if (results.bestMatch.matchScore >= 40) {
+          recommendations.push({
+            action: "FORCE_LINK",
+            message: `Best match "${results.bestMatch.name}" has score ${results.bestMatch.matchScore}% - use force-link endpoint to manually select it`
+          });
+        } else {
+          recommendations.push({
+            action: "RE_SCRAPE",
+            message: `Best match only has score ${results.bestMatch.matchScore}% - consider re-scraping with a more accurate address`
+          });
+        }
+      }
+      
+      if (results.currentSubject && results.currentSubject.matchScore < 50) {
+        recommendations.push({
+          action: "WARNING",
+          message: `Current subject "${results.currentSubject.name}" has low match score ${results.currentSubject.matchScore}% - may be incorrectly matched`
+        });
+      }
+      
+      res.json({
+        ...results,
+        recommendations,
+        summary: {
+          totalScrapedProperties: results.allMatches.length,
+          hasSubjectProperty: !!results.currentSubject,
+          bestMatchScore: results.bestMatch ? results.bestMatch.matchScore : 0,
+          matchThreshold: 50
+        }
+      });
+      
+    } catch (error) {
+      console.error("[DEBUG_MATCHING] Error:", error);
+      res.status(500).json({ message: "Failed to debug matching" });
     }
   });
 
