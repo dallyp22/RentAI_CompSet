@@ -109,73 +109,12 @@ export class MemStorage implements IStorage {
     this.scrapedProperties = new Map();
     this.scrapedUnits = new Map();
     this.workflowStates = new Map();
-    this.seedData();
+    // Removed seedData() - only use real data from Scrapezy
   }
 
-  private seedData() {
-    // Seed some competitor properties for demonstration
-    const competitors: CompetitorProperty[] = [
-      {
-        id: randomUUID(),
-        name: "Sunset Gardens Apartments",
-        address: "456 Oak Avenue",
-        distance: "0.3",
-        priceRange: "$1,450-$2,100",
-        totalUnits: 65,
-        builtYear: 2018,
-        amenities: ["Pool", "Gym", "Pet Friendly"],
-        matchScore: "92.0",
-        vacancyRate: "11.2",
-        createdAt: new Date()
-      },
-      {
-        id: randomUUID(),
-        name: "Riverside Commons",
-        address: "789 River Road",
-        distance: "0.7",
-        priceRange: "$1,350-$1,950",
-        totalUnits: 48,
-        builtYear: 2016,
-        amenities: ["Pool", "Laundry", "Parking"],
-        matchScore: "88.0",
-        vacancyRate: "7.1",
-        createdAt: new Date()
-      },
-      {
-        id: randomUUID(),
-        name: "Metro Plaza Residences",
-        address: "321 Metro Street",
-        distance: "1.2",
-        priceRange: "$1,600-$2,300",
-        totalUnits: 82,
-        builtYear: 2020,
-        amenities: ["Pool", "Gym", "Concierge", "Rooftop Deck"],
-        matchScore: "76.0",
-        vacancyRate: "5.8",
-        createdAt: new Date()
-      },
-      {
-        id: randomUUID(),
-        name: "Parkview Estates",
-        address: "555 Park Lane",
-        distance: "0.9",
-        priceRange: "$1,400-$2,000",
-        totalUnits: 72,
-        builtYear: 2017,
-        amenities: ["Pool", "Gym", "Pet Friendly", "Balconies"],
-        matchScore: "84.0",
-        vacancyRate: "12.1",
-        createdAt: new Date()
-      }
-    ];
-
-    competitors.forEach(competitor => {
-      this.competitorProperties.set(competitor.id, competitor);
-    });
-
-    // No sample scraped properties or units - these will be populated from real scraping only
-    // This ensures only valid apartments.com URLs are used in the scraping workflow
-  }
+  // Removed seedData() method - only use real data from Scrapezy
+  // This ensures only valid apartments.com URLs are used in the scraping workflow
+  // All competitor properties will be populated from actual scraping jobs
 
   async createProperty(insertProperty: InsertProperty): Promise<Property> {
     const id = randomUUID();
