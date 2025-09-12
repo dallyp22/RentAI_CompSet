@@ -208,78 +208,82 @@ const AnalysisFilters = memo(({
           <div className="space-y-3" data-testid="filter-presets">
             <Label className="text-sm font-semibold">Quick Presets</Label>
             <TooltipProvider>
-              <div className="grid grid-cols-2 gap-2">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={applyPremiumPreset}
-                      className="justify-start"
-                      data-testid="preset-premium"
-                    >
-                      <Sparkles className="mr-2 h-3 w-3" />
-                      Premium
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>High-end units: $2000-$3000, 2-3BR, 1000-2000 sq ft</p>
-                  </TooltipContent>
-                </Tooltip>
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="default"
+                        onClick={applyPremiumPreset}
+                        className="justify-center text-xs h-9"
+                        data-testid="preset-premium"
+                      >
+                        <Sparkles className="mr-1 h-3 w-3" />
+                        Premium
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>High-end units: $2000-$3000, 2-3BR, 1000-2000 sq ft</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={applyEntryLevelPreset}
-                      className="justify-start"
-                      data-testid="preset-entry"
-                    >
-                      <DollarSign className="mr-2 h-3 w-3" />
-                      Entry Level
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Affordable units: $800-$1500, Studio-1BR, 400-800 sq ft</p>
-                  </TooltipContent>
-                </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="default"
+                        onClick={applyEntryLevelPreset}
+                        className="justify-center text-xs h-9"
+                        data-testid="preset-entry"
+                      >
+                        <DollarSign className="mr-1 h-3 w-3" />
+                        Entry Level
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Affordable units: $800-$1500, Studio-1BR, 400-800 sq ft</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={applyHighTurnoverPreset}
-                      className="justify-start"
-                      data-testid="preset-turnover"
-                    >
-                      <Clock className="mr-2 h-3 w-3" />
-                      High Turnover
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Quick move-ins: Available now, flexible lease terms</p>
-                  </TooltipContent>
-                </Tooltip>
+                <div className="grid grid-cols-2 gap-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="default"
+                        onClick={applyHighTurnoverPreset}
+                        className="justify-center text-xs h-9"
+                        data-testid="preset-turnover"
+                      >
+                        <Clock className="mr-1 h-3 w-3" />
+                        High Turn
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Quick move-ins: Available now, flexible lease terms</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={resetFilters}
-                      className="justify-start"
-                      data-testid="preset-clear"
-                    >
-                      <RotateCcw className="mr-2 h-3 w-3" />
-                      Clear All
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Reset all filters to defaults</p>
-                  </TooltipContent>
-                </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="default"
+                        onClick={resetFilters}
+                        className="justify-center text-xs h-9"
+                        data-testid="preset-clear"
+                      >
+                        <RotateCcw className="mr-1 h-3 w-3" />
+                        Clear All
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Reset all filters to defaults</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
             </TooltipProvider>
           </div>
