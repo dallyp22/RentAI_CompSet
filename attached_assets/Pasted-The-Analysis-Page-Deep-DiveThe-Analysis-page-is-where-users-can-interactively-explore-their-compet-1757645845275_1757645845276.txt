@@ -1,0 +1,79 @@
+The Analysis Page - Deep DiveThe Analysis page is where users can interactively explore their competitive market data with dynamic filters that instantly update the insights. Think of it as a "data playground" where property managers can test different scenarios and see how various factors affect their competitive position.Core Concept:
+Instead of a static report, users get a living analysis that responds to their specific questions: "What if I only look at 2-bedroom units?" or "How do I compete in the luxury segment above $2,000?"📊 Page Layout & Components┌─────────────────────────────────────────────────────────────┐
+│                    ANALYSIS DASHBOARD                       │
+├─────────────────────┬───────────────────────────────────────┤
+│                     │                                       │
+│   MAIN ANALYSIS     │         FILTER PANEL                  │
+│   DISPLAY AREA      │         (Right Sidebar)               │
+│     (75% width)     │          (25% width)                  │
+│                     │                                       │
+│  • Dynamic Charts   │    📊 Variable Controls:              │
+│  • AI Insights      │    □ Studio                           │
+│  • Metrics Cards    │    ☑ 1 Bedroom                        │
+│  • Recommendations  │    ☑ 2 Bedroom                        │
+│                     │    □ 3 Bedroom                        │
+│                     │                                       │
+│                     │    💰 Price Range                     │
+│                     │    $800 ────●──── $3000               │
+│                     │                                       │
+│                     │    📅 Availability                    │
+│                     │    ◉ All                              │
+│                     │    ○ Available Now                    │
+│                     │    ○ Within 30 Days                   │
+└─────────────────────┴───────────────────────────────────────┘🎛️ Interactive Filter Panel (Right Sidebar)1. Bedroom Type Filter
+javascript// When user toggles bedroom filters
+function handleBedroomFilter(bedroomType, isChecked) {
+    if (isChecked) {
+        activeFilters.bedrooms.push(bedroomType);
+    } else {
+        activeFilters.bedrooms = activeFilters.bedrooms.filter(b => b !== bedroomType);
+    }
+    
+    // Instantly update the analysis
+    updateAnalysisDisplay();
+}What happens when toggled:
+
+ON: Includes that bedroom type in analysis
+OFF: Excludes it completely from calculations
+Use Case: "Show me only how my 1 & 2 bedroom units compare to market"
+2. Price Range Slider
+javascript{
+    type: 'dual-range-slider',
+    min: lowestRentInMarket,  // e.g., $800
+    max: highestRentInMarket, // e.g., $3000
+    onChange: (min, max) => {
+        // Only analyze units within this price range
+        activeFilters.priceRange = { min, max };
+        updateAnalysisDisplay();
+    }
+}What it filters:
+
+Shows only units (yours and competitors) within selected range
+Recalculates market position based on this segment
+Use Case: "How do I compete in the $1500-2000 premium segment?"
+3. Availability Timeline
+javascript{
+    options: [
+        'all',           // All units regardless of availability
+        'now',           // Only immediately available
+        'within_30',     // Available within 30 days
+        'within_60',     // Available within 60 days
+        'future'         // Future availability
+    ]
+}Impact on analysis:
+
+Changes urgency scoring
+Adjusts pricing recommendations
+Use Case: "What's my immediate competition for units available now?"
+4. Square Footage Range
+javascript{
+    type: 'range-slider',
+    min: 400,
+    max: 2000,
+    step: 50,
+    format: (value) => `${value} sq ft`
+}What it does:
+
+Filters to compare only similar-sized units
+More accurate $/sq ft calculations
+Use Case: "Compare only our larger units (1000+ sq ft)"

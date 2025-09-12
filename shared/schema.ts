@@ -146,6 +146,43 @@ export const filterCriteriaSchema = z.object({
   })
 });
 
+// Unit comparison data for visualization
+export const unitComparisonSchema = z.object({
+  unitId: z.string(),
+  propertyName: z.string(),
+  unitType: z.string(),
+  bedrooms: z.number(),
+  bathrooms: z.number().nullable(),
+  squareFootage: z.number().nullable(),
+  rent: z.number(),
+  isSubject: z.boolean(),
+  availabilityDate: z.string().optional()
+});
+
+// Competitive edge analysis
+export const competitiveEdgesSchema = z.object({
+  pricing: z.object({
+    edge: z.number(), // percentage difference from market
+    label: z.string(), // e.g., "+5% above market"
+    status: z.enum(["advantage", "neutral", "disadvantage"])
+  }),
+  size: z.object({
+    edge: z.number(), // sq ft difference
+    label: z.string(), // e.g., "+120 sq ft larger"
+    status: z.enum(["advantage", "neutral", "disadvantage"])
+  }),
+  availability: z.object({
+    edge: z.number(), // days difference
+    label: z.string(), // e.g., "2 days faster"
+    status: z.enum(["advantage", "neutral", "disadvantage"])
+  }),
+  amenities: z.object({
+    edge: z.number(), // score difference
+    label: z.string(), // e.g., "Premium amenities"
+    status: z.enum(["advantage", "neutral", "disadvantage"])
+  })
+});
+
 export const filteredAnalysisSchema = z.object({
   marketPosition: z.string(),
   pricingPowerScore: z.number().min(0).max(100),
@@ -156,8 +193,19 @@ export const filteredAnalysisSchema = z.object({
   percentileRank: z.number().min(0).max(100),
   locationScore: z.number().min(0).max(100),
   amenityScore: z.number().min(0).max(100),
-  pricePerSqFt: z.number().min(0)
+  pricePerSqFt: z.number().min(0),
+  // New fields for enhanced analysis
+  subjectUnits: z.array(unitComparisonSchema),
+  competitorUnits: z.array(unitComparisonSchema),
+  competitiveEdges: competitiveEdgesSchema,
+  aiInsights: z.array(z.string()),
+  subjectAvgRent: z.number(),
+  competitorAvgRent: z.number(),
+  subjectAvgSqFt: z.number(),
+  competitorAvgSqFt: z.number()
 });
 
 export type FilterCriteria = z.infer<typeof filterCriteriaSchema>;
+export type UnitComparison = z.infer<typeof unitComparisonSchema>;
+export type CompetitiveEdges = z.infer<typeof competitiveEdgesSchema>;
 export type FilteredAnalysis = z.infer<typeof filteredAnalysisSchema>;

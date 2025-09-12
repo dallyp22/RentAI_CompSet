@@ -495,6 +495,68 @@ Please provide your analysis in this exact JSON format:
       // Generate filtered analysis
       const analysis = await storage.generateFilteredAnalysis(propertyId, filterData);
       
+      // Generate AI insights if OpenAI is configured
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          const filterDescription = [];
+          if (filterData.bedroomTypes.length > 0) {
+            filterDescription.push(`${filterData.bedroomTypes.join(", ")} units`);
+          }
+          filterDescription.push(`$${filterData.priceRange.min}-$${filterData.priceRange.max} price range`);
+          filterDescription.push(`${filterData.squareFootageRange.min}-${filterData.squareFootageRange.max} sq ft`);
+          
+          const prompt = `Analyze the competitive position for a property with the following market data:
+          
+Property Analysis:
+- Market Position: ${analysis.marketPosition} (${analysis.percentileRank}th percentile)
+- Subject Units: ${analysis.subjectUnits.length} units matching filters
+- Competitor Units: ${analysis.competitorUnits.length} units for comparison
+- Subject Avg Rent: $${analysis.subjectAvgRent}
+- Competitor Avg Rent: $${analysis.competitorAvgRent}
+- Pricing Power Score: ${analysis.pricingPowerScore}/100
+
+Competitive Edges:
+- Pricing: ${analysis.competitiveEdges.pricing.label} (${analysis.competitiveEdges.pricing.status})
+- Size: ${analysis.competitiveEdges.size.label} (${analysis.competitiveEdges.size.status})
+- Availability: ${analysis.competitiveEdges.availability.label} (${analysis.competitiveEdges.availability.status})
+- Amenities: ${analysis.competitiveEdges.amenities.label} (${analysis.competitiveEdges.amenities.status})
+
+Filter Criteria Applied: ${filterDescription.join(", ")}
+
+Based on this data, provide exactly 3 specific, actionable insights that would help a property manager optimize their competitive position. Each insight should be concise (under 100 characters) and directly actionable. Format as a JSON array of strings.`;
+          
+          const completion = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+              {
+                role: "system",
+                content: "You are a real estate market analyst providing specific, actionable insights for property managers."
+              },
+              {
+                role: "user",
+                content: prompt
+              }
+            ],
+            temperature: 0.7,
+            max_tokens: 300
+          });
+          
+          const aiResponse = completion.choices[0]?.message?.content || "[]";
+          try {
+            const insights = JSON.parse(aiResponse);
+            if (Array.isArray(insights) && insights.length > 0) {
+              analysis.aiInsights = insights.slice(0, 3);
+            }
+          } catch (parseError) {
+            console.warn("Failed to parse AI insights:", parseError);
+            // Keep the placeholder insights if AI fails
+          }
+        } catch (aiError) {
+          console.warn("AI insights generation failed:", aiError);
+          // Keep the placeholder insights if AI fails
+        }
+      }
+      
       res.json(analysis);
     } catch (error) {
       console.error("Error generating filtered analysis:", error);
