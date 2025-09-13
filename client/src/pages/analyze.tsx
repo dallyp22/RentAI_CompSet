@@ -14,9 +14,9 @@ export default function Analyze({ params }: { params: { id: string } }) {
   const [, setLocation] = useLocation();
   const [filters, setFilters] = useState<FilterCriteria>({
     bedroomTypes: [],
-    priceRange: { min: 800, max: 3000 },
-    availability: "30days",  // Changed from "now" to be more inclusive
-    squareFootageRange: { min: 400, max: 2000 }
+    priceRange: { min: 500, max: 5000 },  // Widened range to capture all units
+    availability: "60days",  // Most inclusive option to show all units
+    squareFootageRange: { min: 200, max: 3000 }  // Expanded range for all unit sizes
   });
   const [analysisData, setAnalysisData] = useState<FilteredAnalysis | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);

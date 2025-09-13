@@ -148,18 +148,18 @@ const AnalysisFilters = memo(({
   const applyPremiumPreset = useCallback(() => {
     onFiltersChange({
       ...filters,
-      priceRange: { min: 2000, max: 3000 },
+      priceRange: { min: 2000, max: 5000 },  // Expanded upper range
       bedroomTypes: ["2BR", "3BR"],
-      squareFootageRange: { min: 1000, max: 2000 }
+      squareFootageRange: { min: 1000, max: 3000 }  // Expanded upper range
     });
   }, [filters, onFiltersChange]);
 
   const applyEntryLevelPreset = useCallback(() => {
     onFiltersChange({
       ...filters,
-      priceRange: { min: 800, max: 1500 },
+      priceRange: { min: 500, max: 1500 },  // Lowered minimum
       bedroomTypes: ["Studio", "1BR"],
-      squareFootageRange: { min: 400, max: 800 }
+      squareFootageRange: { min: 200, max: 800 }  // Lowered minimum
     });
   }, [filters, onFiltersChange]);
 
@@ -174,9 +174,9 @@ const AnalysisFilters = memo(({
   const resetFilters = useCallback(() => {
     onFiltersChange({
       bedroomTypes: [],
-      priceRange: { min: 800, max: 3000 },
-      availability: "now",
-      squareFootageRange: { min: 400, max: 2000 },
+      priceRange: { min: 500, max: 5000 },  // Widened range to show all units
+      availability: "60days",  // Most inclusive option
+      squareFootageRange: { min: 200, max: 3000 },  // Expanded range
       amenities: undefined,
       leaseTerms: undefined,
       floorLevel: undefined,
@@ -242,7 +242,7 @@ const AnalysisFilters = memo(({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Affordable units: $800-$1500, Studio-1BR, 400-800 sq ft</p>
+                      <p>Affordable units: $500-$1500, Studio-1BR, 200-800 sq ft</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -327,15 +327,15 @@ const AnalysisFilters = memo(({
             <Slider
               value={[filters.priceRange.min, filters.priceRange.max]}
               onValueChange={handlePriceRangeChange}
-              max={3000}
-              min={800}
+              max={5000}  // Expanded to show all units
+              min={500}   // Lowered to capture all units
               step={50}
               className="w-full"
               data-testid="slider-price-range"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>$800</span>
-              <span>$3,000</span>
+              <span>$500</span>
+              <span>$5,000</span>
             </div>
           </div>
 
@@ -381,15 +381,15 @@ const AnalysisFilters = memo(({
             <Slider
               value={[filters.squareFootageRange.min, filters.squareFootageRange.max]}
               onValueChange={handleSquareFootageChange}
-              max={2000}
-              min={400}
+              max={3000}  // Expanded to capture luxury units
+              min={200}   // Lowered to include studios
               step={25}
               className="w-full"
               data-testid="slider-sqft-range"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>400 sq ft</span>
-              <span>2,000 sq ft</span>
+              <span>200 sq ft</span>
+              <span>3,000 sq ft</span>
             </div>
           </div>
 

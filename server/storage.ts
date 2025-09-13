@@ -424,8 +424,8 @@ export class MemStorage implements IStorage {
     const beforePriceCount = units.length;
     units = units.filter(unit => {
       if (!unit.rent) {
-        console.log('[FILTER] Unit has no rent value, excluding');
-        return false;
+        console.log('[FILTER] Unit has no rent value, including anyway for wide filter');
+        return true; // Include units without rent data when using wide ranges
       }
       // Handle rent values that may be strings with formatting (e.g., "$1,234" or "1234")
       let rentValue: number;
@@ -436,8 +436,8 @@ export class MemStorage implements IStorage {
       rentValue = parseFloat(cleanedRent);
       
       if (isNaN(rentValue)) {
-        console.log('[FILTER] Could not parse rent value:', rentStr, '-> cleaned:', cleanedRent);
-        return false;
+        console.log('[FILTER] Could not parse rent value:', rentStr, '-> cleaned:', cleanedRent, '- including anyway');
+        return true; // Include units we can't parse for wide filter
       }
       
       const inRange = rentValue >= criteria.priceRange.min && rentValue <= criteria.priceRange.max;
@@ -449,10 +449,19 @@ export class MemStorage implements IStorage {
     console.log('[FILTER] After price filter (', criteria.priceRange.min, '-', criteria.priceRange.max, '):', units.length, 'units (filtered out', beforePriceCount - units.length, ')');
 
     // Filter by square footage range
+    const beforeSqFtCount = units.length;
     units = units.filter(unit => {
-      if (!unit.squareFootage) return true; // Keep units without sq ft data
-      return unit.squareFootage >= criteria.squareFootageRange.min && unit.squareFootage <= criteria.squareFootageRange.max;
+      if (!unit.squareFootage) {
+        console.log('[FILTER] Unit has no square footage, including anyway');
+        return true; // Keep units without sq ft data
+      }
+      const inRange = unit.squareFootage >= criteria.squareFootageRange.min && unit.squareFootage <= criteria.squareFootageRange.max;
+      if (!inRange) {
+        console.log('[FILTER] Unit sq ft', unit.squareFootage, 'outside range', criteria.squareFootageRange.min, '-', criteria.squareFootageRange.max);
+      }
+      return inRange;
     });
+    console.log('[FILTER] After square footage filter:', units.length, 'units (filtered out', beforeSqFtCount - units.length, ')');
 
     // Filter by availability - flexible matching for various status formats
     const beforeAvailabilityCount = units.length;
@@ -496,20 +505,9 @@ export class MemStorage implements IStorage {
         return matches;
       });
     } else if (criteria.availability === "60days") {
-      // For 60days, include all units except explicitly occupied ones
-      units = units.filter(unit => {
-        if (!unit.status) {
-          console.log('[FILTER] Unit has no status, including in "60days" filter');
-          return true; // Include units with no status
-        }
-        const status = unit.status.toLowerCase();
-        // Exclude only units that are clearly occupied with no availability date
-        const matches = status !== "occupied" || status.includes("available");
-        if (!matches) {
-          console.log('[FILTER] Status "' + unit.status + '" does not match "60days" criteria');
-        }
-        return matches;
-      });
+      // For 60days, include ALL units regardless of status for maximum visibility
+      console.log('[FILTER] 60days filter - including all units regardless of status');
+      // Don't filter anything - keep all units
     }
     
     console.log('[FILTER] After availability filter:', units.length, 'units (filtered out', beforeAvailabilityCount - units.length, ')');
