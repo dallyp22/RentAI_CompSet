@@ -606,43 +606,6 @@ Please provide your analysis in this exact JSON format:
     }
   });
 
-  // Create sample units for a property (for demo purposes)
-  app.post("/api/properties/:id/units", async (req, res) => {
-    try {
-      const propertyId = req.params.id;
-      const property = await storage.getProperty(propertyId);
-      
-      if (!property) {
-        return res.status(404).json({ message: "Property not found" });
-      }
-
-      // Create sample units based on property type
-      const sampleUnits = [
-        { unitNumber: "A101", unitType: "1BR/1BA", currentRent: "1450", status: "vacant" },
-        { unitNumber: "A102", unitType: "1BR/1BA", currentRent: "1450", status: "occupied" },
-        { unitNumber: "B201", unitType: "2BR/2BA", currentRent: "1850", status: "notice_given" },
-        { unitNumber: "B202", unitType: "2BR/2BA", currentRent: "1900", status: "occupied" },
-        { unitNumber: "C301", unitType: "3BR/2BA", currentRent: "2200", status: "vacant" }
-      ];
-
-      const units = [];
-      for (const unitData of sampleUnits) {
-        const unit = await storage.createPropertyUnit({
-          propertyId,
-          unitNumber: unitData.unitNumber,
-          unitType: unitData.unitType,
-          currentRent: unitData.currentRent,
-          status: unitData.status
-        });
-        units.push(unit);
-      }
-
-      res.json(units);
-    } catch (error) {
-      console.error("Error creating units:", error);
-      res.status(500).json({ message: "Failed to create property units" });
-    }
-  });
 
   // Get property units
   app.get("/api/properties/:id/units", async (req, res) => {
