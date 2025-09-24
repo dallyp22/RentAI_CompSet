@@ -58,11 +58,16 @@ export default function PropertyInput() {
         description: data.message,
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error("Error starting scraping:", error);
+      const errorMessage = error?.message || "Failed to start competitive data scraping.";
+      const isTemporary = errorMessage.includes("temporarily unavailable");
+      
       toast({
-        title: "Scraping Failed",
-        description: "Failed to start competitive data scraping.",
+        title: isTemporary ? "Temporary Service Issue" : "Scraping Failed",
+        description: isTemporary 
+          ? "The scraping service is temporarily unavailable due to anti-scraping protection. Please try again in a few minutes."
+          : errorMessage,
         variant: "destructive",
       });
     }
