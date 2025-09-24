@@ -77,6 +77,9 @@ export interface IStorage {
   // Get scraped property by ID
   getScrapedProperty(id: string): Promise<ScrapedProperty | undefined>;
   
+  // Clear scraped properties cache
+  clearScrapedPropertiesCache(): Promise<void>;
+  
   // Get original property ID from scraped property
   getOriginalPropertyIdFromScraped(scrapedPropertyId: string): Promise<string | null>;
   
@@ -389,6 +392,25 @@ export class MemStorage implements IStorage {
     
     // Return the original property ID from the scraping job
     return scrapingJob.propertyId;
+  }
+
+  async clearScrapedPropertiesCache(): Promise<void> {
+    console.log('[STORAGE] Clearing scraped properties cache');
+    console.log('[STORAGE] Before clear - scraped properties count:', this.scrapedProperties.size);
+    console.log('[STORAGE] Before clear - scraped units count:', this.scrapedUnits.size);
+    console.log('[STORAGE] Before clear - scraping jobs count:', this.scrapingJobs.size);
+    
+    // Clear scraped properties and units
+    this.scrapedProperties.clear();
+    this.scrapedUnits.clear();
+    
+    // Also clear scraping jobs to start fresh
+    this.scrapingJobs.clear();
+    
+    console.log('[STORAGE] After clear - scraped properties count:', this.scrapedProperties.size);
+    console.log('[STORAGE] After clear - scraped units count:', this.scrapedUnits.size);
+    console.log('[STORAGE] After clear - scraping jobs count:', this.scrapingJobs.size);
+    console.log('[STORAGE] ✅ Scraped properties cache cleared successfully');
   }
 
   async getFilteredScrapedUnits(criteria: FilterCriteria): Promise<ScrapedUnit[]> {
