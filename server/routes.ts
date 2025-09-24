@@ -1884,7 +1884,9 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           }
         }
         
-        const url = `apartments.com/${city.toLowerCase().replace(/\s+/g, '-')}/`;
+        // Use the first part as city if we can't parse it properly
+        const cityPart = cityStateZipParts[0] || cityStateZip;
+        const url = `apartments.com/${cityPart.toLowerCase().replace(/\s+/g, '-')}/`;
         console.log('[GENERATE_CITY_URL] Generated URL without state/zip:', url);
         return url;
       }
