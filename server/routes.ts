@@ -1918,6 +1918,10 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         return res.status(404).json({ message: "Property not found" });
       }
 
+      // Clear scraped properties cache to prevent interference from previous searches
+      console.log('[SCRAPE] Clearing scraped properties cache for new search');
+      await storage.clearScrapedPropertiesCache();
+
       const cityUrl = generateCityUrl(property.address);
       if (!cityUrl) {
         console.error('[SCRAPE] Failed to generate URL from address:', property.address);
