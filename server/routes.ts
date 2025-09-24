@@ -1810,37 +1810,87 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
 
   // Helper function to generate city URL from address
   function generateCityUrl(address: string): string {
-    const parts = address.split(',').map(p => p.trim());
+    console.log('[GENERATE_CITY_URL] Input address:', address);
     
-    if (parts.length < 2) return '';
+    const parts = address.split(',').map(p => p.trim());
+    console.log('[GENERATE_CITY_URL] Address parts:', parts);
+    
+    if (parts.length < 2) {
+      console.log('[GENERATE_CITY_URL] Not enough parts in address');
+      return '';
+    }
     
     // Expected formats:
     // "Street Address, City, State ZIP" -> ["Street Address", "City", "State ZIP"]
     // "Street Address, City State ZIP" -> ["Street Address", "City State ZIP"]
     
     if (parts.length >= 3) {
-      // Format: "Street, City, State ZIP"
+      // Format: "Street, City, State ZIP" (most common)
       const city = parts[1].toLowerCase().replace(/\s+/g, '-');
       const stateWithZip = parts[2];
-      const stateZipParts = stateWithZip.split(' ');
-      const state = stateZipParts[0].toLowerCase();
-      const zip = stateZipParts[1] || '';
       
-      return zip ? `apartments.com/${city}-${state}-${zip}/` : `apartments.com/${city}-${state}/`;
+      // Extract state and zip using regex for better reliability
+      const stateZipMatch = stateWithZip.match(/^([A-Z]{2})\s+(\d{5})/i);
+      
+      if (stateZipMatch) {
+        const state = stateZipMatch[1].toLowerCase();
+        const zip = stateZipMatch[2];
+        const url = `apartments.com/${city}-${state}-${zip}/`;
+        console.log('[GENERATE_CITY_URL] Generated URL with zipcode:', url);
+        return url;
+      } else {
+        // Fallback to splitting by space
+        const stateZipParts = stateWithZip.split(/\s+/);
+        const state = stateZipParts[0].toLowerCase();
+        const zip = stateZipParts[1] || '';
+        
+        if (zip && /^\d{5}/.test(zip)) {
+          const url = `apartments.com/${city}-${state}-${zip}/`;
+          console.log('[GENERATE_CITY_URL] Generated URL with zipcode (fallback):', url);
+          return url;
+        } else {
+          const url = `apartments.com/${city}-${state}/`;
+          console.log('[GENERATE_CITY_URL] Generated URL without zipcode:', url);
+          return url;
+        }
+      }
     } else if (parts.length === 2) {
       // Format: "Street, City State ZIP"
       const cityStateZip = parts[1];
-      const cityStateZipParts = cityStateZip.split(' ');
       
-      if (cityStateZipParts.length >= 2) {
-        const city = cityStateZipParts[0].toLowerCase();
-        const state = cityStateZipParts[1].toLowerCase();
-        const zip = cityStateZipParts[2] || '';
+      // Try to extract city, state, and zip using regex
+      const match = cityStateZip.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5})/i);
+      
+      if (match) {
+        const city = match[1].toLowerCase().replace(/\s+/g, '-');
+        const state = match[2].toLowerCase();
+        const zip = match[3];
+        const url = `apartments.com/${city}-${state}-${zip}/`;
+        console.log('[GENERATE_CITY_URL] Generated URL with zipcode (format 2):', url);
+        return url;
+      } else {
+        // Fallback to simple split
+        const cityStateZipParts = cityStateZip.split(/\s+/);
         
-        return zip ? `apartments.com/${city}-${state}-${zip}/` : `apartments.com/${city}-${state}/`;
+        if (cityStateZipParts.length >= 3) {
+          const city = cityStateZipParts[0].toLowerCase();
+          const state = cityStateZipParts[1].toLowerCase();
+          const zip = cityStateZipParts[2] || '';
+          
+          if (zip && /^\d{5}/.test(zip)) {
+            const url = `apartments.com/${city}-${state}-${zip}/`;
+            console.log('[GENERATE_CITY_URL] Generated URL with zipcode (format 2 fallback):', url);
+            return url;
+          }
+        }
+        
+        const url = `apartments.com/${city.toLowerCase().replace(/\s+/g, '-')}/`;
+        console.log('[GENERATE_CITY_URL] Generated URL without state/zip:', url);
+        return url;
       }
     }
     
+    console.log('[GENERATE_CITY_URL] Failed to generate URL');
     return '';
   }
 
@@ -1868,10 +1918,17 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
 
       const cityUrl = generateCityUrl(property.address);
       if (!cityUrl) {
-        return res.status(400).json({ message: "Unable to extract city from address" });
+        console.error('[SCRAPE] Failed to generate URL from address:', property.address);
+        return res.status(400).json({ message: "Unable to extract city/zipcode from address. Please ensure address format is: Street, City, State ZIP" });
       }
 
       const cityState = extractCityState(property.address);
+      console.log('[SCRAPE] ===========================================');
+      console.log('[SCRAPE] Starting scraping for property:', property.propertyName);
+      console.log('[SCRAPE] Property address:', property.address);
+      console.log('[SCRAPE] Generated URL:', `https://www.${cityUrl}`);
+      console.log('[SCRAPE] Location:', cityState);
+      console.log('[SCRAPE] ===========================================');
 
       // Create scraping job
       const scrapingJob = await storage.createScrapingJob({
@@ -1887,7 +1944,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           `https://www.${cityUrl}`
         ];
 
-        console.log(`Starting Scrapezy scraping for ${cityState}:`, urls);
+        console.log(`[SCRAPE] Calling Scrapezy API with URL:`, urls[0]);
         
         // Scrape single page
         let allProperties = [];
