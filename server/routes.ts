@@ -620,6 +620,82 @@ Please provide your analysis in this exact JSON format:
     }
   });
 
+  // Create property units (from scraped data or generate basic ones)
+  app.post("/api/properties/:id/units", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      const property = await storage.getProperty(propertyId);
+      
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      console.log('[CREATE_UNITS] Creating units for property:', property.propertyName);
+      
+      // Try to get scraped units first
+      let scrapedUnits: ScrapedUnit[] = [];
+      const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId);
+      
+      if (scrapingJobs.length > 0) {
+        for (const job of scrapingJobs) {
+          const scrapedProperties = await storage.getScrapedPropertiesByJob(job.id);
+          const subject = scrapedProperties.find(p => p.isSubjectProperty === true);
+          if (subject) {
+            scrapedUnits = await storage.getScrapedUnitsByProperty(subject.id);
+            console.log('[CREATE_UNITS] Found', scrapedUnits.length, 'scraped units');
+            break;
+          }
+        }
+      }
+      
+      // Clear existing units
+      await storage.clearPropertyUnits(propertyId);
+      const units = [];
+      
+      if (scrapedUnits.length > 0) {
+        // Create from scraped data
+        console.log('[CREATE_UNITS] Creating units from scraped data');
+        for (const scrapedUnit of scrapedUnits) {
+          // Generate safe fallback ID if needed
+          const fallbackId = scrapedUnit.id ? scrapedUnit.id.slice(0, 6) : Math.random().toString(36).slice(2, 8);
+          
+          const unit = await storage.createPropertyUnit({
+            propertyId,
+            unitNumber: scrapedUnit.unitNumber || scrapedUnit.floorPlanName || `Unit-${fallbackId}`,
+            unitType: scrapedUnit.unitType || '1BR',  // Safe default that matches schema
+            currentRent: String(scrapedUnit.rent ?? "1500"),  // Ensure string type
+            status: scrapedUnit.status || "occupied"
+          });
+          units.push(unit);
+        }
+      } else {
+        // Generate basic units if no scraped data
+        const unitsToCreate = Math.min(property.totalUnits || 10, 10);
+        console.log('[CREATE_UNITS] No scraped units, generating', unitsToCreate, 'basic units');
+        
+        for (let i = 0; i < unitsToCreate; i++) {
+          const unitType = i % 3 === 0 ? 'Studio' : (i % 3 === 1 ? '1BR' : '2BR');
+          const baseRent = unitType === 'Studio' ? 1200 : (unitType === '1BR' ? 1500 : 1800);
+          
+          const unit = await storage.createPropertyUnit({
+            propertyId,
+            unitNumber: `Unit-${i + 1}`,
+            unitType,
+            currentRent: String(baseRent + Math.floor(Math.random() * 200)),
+            status: Math.random() > 0.15 ? "occupied" : "available"
+          });
+          units.push(unit);
+        }
+      }
+      
+      console.log('[CREATE_UNITS] Successfully created', units.length, 'units');
+      res.json(units);
+    } catch (error) {
+      console.error("[CREATE_UNITS] Error creating units:", error);
+      res.status(500).json({ message: "Failed to create units" });
+    }
+  });
+
   // Generate filtered analysis based on filter criteria
   app.post("/api/filtered-analysis", async (req, res) => {
     try {
