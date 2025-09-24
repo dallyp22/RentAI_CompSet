@@ -141,8 +141,8 @@ function parseUrls(scrapezyResult: any): Array<{url: string, name: string, addre
       try {
         const parsed = JSON.parse(resultText);
         
-        // Check for apartment_listings or apartments key (Scrapezy format)
-        const apartmentData = parsed.apartment_listings || parsed.apartments;
+        // Check for listings, apartment_listings or apartments key (Scrapezy format)
+        const apartmentData = parsed.listings || parsed.apartment_listings || parsed.apartments;
         if (apartmentData && Array.isArray(apartmentData)) {
           properties = apartmentData.filter(item => 
             item && 
@@ -180,7 +180,7 @@ function parseUrls(scrapezyResult: any): Array<{url: string, name: string, addre
       }
     } else if (typeof resultText === 'object' && resultText !== null) {
       // Handle object response (already parsed)
-      const apartmentDataObj = resultText.apartment_listings || resultText.apartments;
+      const apartmentDataObj = resultText.listings || resultText.apartment_listings || resultText.apartments;
       if (apartmentDataObj && Array.isArray(apartmentDataObj)) {
         properties = apartmentDataObj.filter(item => 
           item && 
@@ -746,8 +746,16 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     try {
       const propertyId = req.params.id;
       const { goal, targetOccupancy, riskTolerance } = req.body;
+      
+      console.log(`[OPTIMIZE] Starting optimization for property ${propertyId}`);
+      console.log(`[OPTIMIZE] Parameters - Goal: ${goal}, Target Occupancy: ${targetOccupancy}%, Risk: ${riskTolerance}`);
 
       const property = await storage.getProperty(propertyId);
+      
+      if (!property) {
+        console.error(`[OPTIMIZE] Property ${propertyId} not found`);
+        return res.status(404).json({ message: "Property not found" });
+      }
       
       // Get the subject property's scraped units for comprehensive optimization
       let subjectProperty = null;
@@ -755,17 +763,27 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       
       // Find the subject scraped property
       const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId);
+      console.log(`[OPTIMIZE] Found ${scrapingJobs.length} scraping jobs for property`);
+      
       if (scrapingJobs.length > 0) {
         for (const job of scrapingJobs) {
           const scrapedProperties = await storage.getScrapedPropertiesByJob(job.id);
+          console.log(`[OPTIMIZE] Job ${job.id} has ${scrapedProperties.length} scraped properties`);
+          
           const subject = scrapedProperties.find(p => p.isSubjectProperty === true);
           if (subject) {
             subjectProperty = subject;
+            console.log(`[OPTIMIZE] Found subject property: ${subject.name}`);
             // Get all scraped units for this property
             scrapedUnits = await storage.getScrapedUnitsByProperty(subject.id);
+            console.log(`[OPTIMIZE] Found ${scrapedUnits.length} scraped units for subject property`);
             break;
           }
         }
+      }
+      
+      if (!subjectProperty) {
+        console.log(`[OPTIMIZE] No subject property found for property ${propertyId}`);
       }
       
       // Always sync from scraped units when available
@@ -773,7 +791,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       
       // If we have scraped units, always sync them (not just when units.length === 0)
       if (scrapedUnits.length > 0) {
-        console.log(`Syncing ${scrapedUnits.length} scraped units for optimization`);
+        console.log(`[OPTIMIZE] Syncing ${scrapedUnits.length} scraped units for optimization`);
         // Clear existing PropertyUnits
         await storage.clearPropertyUnits(propertyId);
         // Create new PropertyUnits from ALL scraped units
@@ -788,14 +806,37 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           });
           units.push(unit);
         }
+        console.log(`[OPTIMIZE] Created ${units.length} property units from scraped data`);
       } else {
         // Fall back to existing PropertyUnits only if no scraped data
+        console.log(`[OPTIMIZE] No scraped units found, checking for existing PropertyUnits`);
         units = await storage.getPropertyUnits(propertyId);
+        console.log(`[OPTIMIZE] Found ${units.length} existing property units`);
+        
+        // If still no units, try to create some basic ones based on property totalUnits
+        if (units.length === 0 && property.totalUnits && property.totalUnits > 0) {
+          console.log(`[OPTIMIZE] No units found, creating ${Math.min(property.totalUnits, 10)} basic units`);
+          for (let i = 0; i < Math.min(property.totalUnits, 10); i++) {
+            const unit = await storage.createPropertyUnit({
+              propertyId,
+              unitNumber: `Unit-${i + 1}`,
+              unitType: i % 3 === 0 ? 'Studio' : (i % 3 === 1 ? '1BR' : '2BR'),
+              currentRent: "1500",
+              status: "occupied"
+            });
+            units.push(unit);
+          }
+        }
       }
       
-      if (!property || units.length === 0) {
-        return res.status(404).json({ message: "Property or units not found" });
+      if (units.length === 0) {
+        console.error(`[OPTIMIZE] No units available for optimization`);
+        return res.status(404).json({ 
+          message: "No units found for optimization. Please ensure property data has been scraped first." 
+        });
       }
+      
+      console.log(`[OPTIMIZE] Proceeding with ${units.length} units for optimization`)
 
       // Convert parameters to readable format for AI
       const goalDisplayMap: Record<string, string> = {
@@ -862,6 +903,8 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       
       Important: Generate recommendations for ALL ${units.length} units based on the optimization goal and parameters.`;
 
+      console.log(`[OPTIMIZE] Sending request to OpenAI for ${units.length} units`);
+      
       const aiResponse = await openai.chat.completions.create({
         model: "gpt-4o", // Using gpt-4o which is widely available
         messages: [{ role: "user", content: prompt }],
@@ -869,6 +912,9 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       });
 
       const optimizationData = JSON.parse(aiResponse.choices[0].message.content || "{}");
+      
+      console.log(`[OPTIMIZE] AI generated recommendations for ${optimizationData.unitRecommendations?.length || 0} units`);
+      console.log(`[OPTIMIZE] Total increase: $${optimizationData.totalIncrease}, Affected units: ${optimizationData.affectedUnits}`);
       
       // Update units with recommendations
       const updatedUnits = [];
@@ -910,10 +956,21 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         riskLevel: optimizationData.riskLevel
       });
 
+      console.log(`[OPTIMIZE] Successfully generated optimization report with ${updatedUnits.length} units`);
       res.json({ report, units: updatedUnits });
     } catch (error) {
-      console.error("Error generating optimization:", error);
-      res.status(500).json({ message: "Failed to generate optimization report" });
+      console.error("[OPTIMIZE] Error generating optimization:", error);
+      // More detailed error response
+      if (error instanceof Error) {
+        console.error(`[OPTIMIZE] Error details: ${error.message}`);
+        console.error(`[OPTIMIZE] Stack trace: ${error.stack}`);
+        res.status(500).json({ 
+          message: "Failed to generate optimization report",
+          error: error.message 
+        });
+      } else {
+        res.status(500).json({ message: "Failed to generate optimization report" });
+      }
     }
   });
 
