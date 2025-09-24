@@ -65,8 +65,19 @@ export default function Optimize({ params }: { params: { id: string } }) {
 
   const createUnitsMutation = useMutation({
     mutationFn: async (): Promise<PropertyUnit[]> => {
+      console.log('[OPTIMIZE] Creating units for property:', params.id);
       const res = await apiRequest("POST", `/api/properties/${params.id}/units`, {});
-      return res.json();
+      const data = await res.json();
+      console.log('[OPTIMIZE] Units created:', data);
+      return data;
+    },
+    onError: (error) => {
+      console.error('[OPTIMIZE] Failed to create units:', error);
+      toast({
+        title: "Failed to Create Units",
+        description: "Unable to create units for optimization. Please ensure property data has been scraped.",
+        variant: "destructive",
+      });
     }
   });
 
@@ -162,10 +173,16 @@ export default function Optimize({ params }: { params: { id: string } }) {
   });
 
   const generateRecommendations = () => {
+    console.log('[OPTIMIZE] Generate recommendations clicked');
+    console.log('[OPTIMIZE] Current optimization data:', optimizationQuery.data);
+    console.log('[OPTIMIZE] Parameters:', { goal, targetOccupancy: targetOccupancy[0], riskTolerance: riskTolerance[0] });
+    
     // First create units if they don't exist, then optimize
     if (!optimizationQuery.data) {
+      console.log('[OPTIMIZE] No existing optimization data, creating units first');
       createUnitsMutation.mutate(undefined, {
-        onSuccess: () => {
+        onSuccess: (units) => {
+          console.log('[OPTIMIZE] Units created successfully, now optimizing with', units.length, 'units');
           optimizeMutation.mutate({ 
             goal, 
             targetOccupancy: targetOccupancy[0], 
@@ -174,6 +191,7 @@ export default function Optimize({ params }: { params: { id: string } }) {
         }
       });
     } else {
+      console.log('[OPTIMIZE] Existing optimization data found, optimizing directly');
       optimizeMutation.mutate({ 
         goal, 
         targetOccupancy: targetOccupancy[0], 
