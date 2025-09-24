@@ -304,6 +304,41 @@ export default function Summarize({ params }: { params: { id: string } }) {
 
   return (
     <div className="space-y-6" data-testid="summarize-page">
+      {/* Subject Property Card */}
+      {propertyQuery.data && (
+        <Card data-testid="subject-property-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Badge variant="default" className="mr-2">Subject Property</Badge>
+              {propertyQuery.data.property.propertyName}
+            </CardTitle>
+            <CardDescription>
+              {propertyQuery.data.property.address}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Units</p>
+                <p className="text-lg font-semibold">{propertyQuery.data.property.totalUnits || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">City</p>
+                <p className="text-lg font-semibold">{propertyQuery.data.property.city || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">State</p>
+                <p className="text-lg font-semibold">{propertyQuery.data.property.state || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Property Type</p>
+                <p className="text-lg font-semibold">{propertyQuery.data.property.propertyType || 'N/A'}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
       {!showChart ? (
         <CompetitorSelection 
           competitors={competitors}

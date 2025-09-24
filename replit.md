@@ -8,6 +8,22 @@ Property Analytics Pro is a comprehensive real estate analysis platform that hel
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (September 24, 2025)
+
+### Critical Bug Fixes
+- **Fixed Generate Optimization Button**: Added missing POST /api/properties/:id/units endpoint that creates property units from scraped data or generates basic units when no scraped data is available
+- **Fixed Scraping Display Issue**: Updated parseUrls function to handle Scrapezy's "listings" response format in addition to "apartment_listings"
+- **Fixed Property Values Persistence**: 
+  - Added subject property card on summarize page to display property name and address
+  - Implemented form value persistence when navigating back to property input page
+  - Added GET /api/properties/latest endpoint to retrieve most recent property
+- **Fixed Type Safety Issues**: Corrected type mismatches for currentRent (ensured string type) and safe id fallback generation
+
+### Enhanced Error Handling
+- Added comprehensive logging throughout backend endpoints for debugging
+- Improved frontend error messages with detailed toast notifications
+- Added safe fallbacks for scraped data to prevent endpoint crashes
+
 ## System Architecture
 
 ### Frontend Architecture

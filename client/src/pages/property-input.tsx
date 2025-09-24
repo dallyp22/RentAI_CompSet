@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +25,25 @@ export default function PropertyInput() {
   const { toast } = useToast();
   const [result, setResult] = useState<PropertyWithAnalysis | null>(null);
   const [scrapingResult, setScrapingResult] = useState<ScrapingResult | null>(null);
+  const [existingProperty, setExistingProperty] = useState<Property | null>(null);
+  
+  // Query to get the latest property (if it exists)
+  const latestPropertyQuery = useQuery({
+    queryKey: ['/api/properties/latest'],
+    queryFn: async () => {
+      const res = await fetch('/api/properties/latest');
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error('Failed to fetch property');
+      return res.json();
+    },
+    retry: false
+  });
+  
+  useEffect(() => {
+    if (latestPropertyQuery.data) {
+      setExistingProperty(latestPropertyQuery.data);
+    }
+  }, [latestPropertyQuery.data]);
 
   const createPropertyMutation = useMutation({
     mutationFn: async (data: InsertProperty): Promise<PropertyWithAnalysis> => {
@@ -88,6 +107,10 @@ export default function PropertyInput() {
       <PropertyForm 
         onSubmit={handleSubmit}
         isLoading={createPropertyMutation.isPending}
+        initialValues={existingProperty ? {
+          propertyName: existingProperty.propertyName,
+          address: existingProperty.address
+        } : undefined}
       />
       
       {result && (

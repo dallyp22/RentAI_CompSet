@@ -409,6 +409,29 @@ Please provide your analysis in this exact JSON format:
     }
   });
 
+  // Get the latest property (for returning users)
+  app.get("/api/properties/latest", async (req, res) => {
+    try {
+      const properties = await storage.getAllProperties();
+      if (properties.length === 0) {
+        return res.status(404).json({ message: "No properties found" });
+      }
+      
+      // Get the most recently created property
+      const latestProperty = properties
+        .sort((a, b) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return bTime - aTime;
+        })[0];
+      
+      res.json(latestProperty);
+    } catch (error) {
+      console.error("Error fetching latest property:", error);
+      res.status(500).json({ message: "Failed to fetch latest property" });
+    }
+  });
+
   // Get property with analysis and linked scraped data
   app.get("/api/properties/:id", async (req, res) => {
     try {

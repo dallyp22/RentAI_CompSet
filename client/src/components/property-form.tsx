@@ -11,6 +11,10 @@ import { z } from "zod";
 interface PropertyFormProps {
   onSubmit: (data: InsertProperty) => void;
   isLoading?: boolean;
+  initialValues?: {
+    propertyName: string;
+    address: string;
+  };
 }
 
 // Simplified schema for just address and property name
@@ -21,12 +25,12 @@ const simplifiedPropertySchema = z.object({
 
 type SimplifiedFormData = z.infer<typeof simplifiedPropertySchema>;
 
-export default function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
+export default function PropertyForm({ onSubmit, isLoading, initialValues }: PropertyFormProps) {
   const form = useForm<SimplifiedFormData>({
     resolver: zodResolver(simplifiedPropertySchema),
     defaultValues: {
-      address: "",
-      propertyName: ""
+      address: initialValues?.address || "",
+      propertyName: initialValues?.propertyName || ""
     }
   });
 
