@@ -160,7 +160,8 @@ export class PostgresStorage implements IStorage {
   }
 
   async getSelectedCompetitorProperties(ids: string[]): Promise<CompetitorProperty[]> {
-    return await this.db.select().from(competitorProperties).where(sql`${competitorProperties.id} = ANY(${ids})`);
+    if (!ids || ids.length === 0) return [];
+    return await this.db.select().from(competitorProperties).where(sql`${competitorProperties.id} IN (${sql.join(ids.map(id => sql`${id}`), sql`, `)})`);
   }
 
   // Property Units
@@ -228,7 +229,9 @@ export class PostgresStorage implements IStorage {
   }
 
   async getSelectedScrapedProperties(ids: string[]): Promise<ScrapedProperty[]> {
-    return await this.db.select().from(scrapedProperties).where(sql`${scrapedProperties.id} = ANY(${ids})`);
+    if (!ids || ids.length === 0) return [];
+    // Use IN clause instead of ANY for better compatibility
+    return await this.db.select().from(scrapedProperties).where(sql`${scrapedProperties.id} IN (${sql.join(ids.map(id => sql`${id}`), sql`, `)})`);
   }
 
   async updateScrapedProperty(id: string, updates: Partial<ScrapedProperty>): Promise<ScrapedProperty | undefined> {
