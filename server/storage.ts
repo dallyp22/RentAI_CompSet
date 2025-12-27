@@ -143,6 +143,15 @@ export class MemStorage implements IStorage {
     return this.properties.get(id);
   }
 
+  async updateProperty(id: string, updates: Partial<Property>): Promise<Property | undefined> {
+    const property = this.properties.get(id);
+    if (!property) return undefined;
+    
+    const updatedProperty = { ...property, ...updates };
+    this.properties.set(id, updatedProperty);
+    return updatedProperty;
+  }
+
   async getAllProperties(): Promise<Property[]> {
     return Array.from(this.properties.values());
   }
