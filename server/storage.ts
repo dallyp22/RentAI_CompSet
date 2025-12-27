@@ -29,10 +29,10 @@ import {
   scrapedUnits
 } from "@shared/schema";
 import { randomUUID } from "crypto";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { Pool, neonConfig } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pkg from "pg";
+const { Pool } = pkg;
 import { eq, and, sql } from "drizzle-orm";
-import ws from "ws";
 
 // Workflow State interface
 export interface WorkflowState {
@@ -110,8 +110,10 @@ export class PostgresStorage implements IStorage {
   private workflowStates: Map<string, WorkflowState> = new Map(); // Keep workflow in memory for speed
 
   constructor() {
-    neonConfig.webSocketConstructor = ws;
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+    const pool = new Pool({ 
+      connectionString: process.env.DATABASE_URL!,
+      ssl: { rejectUnauthorized: false } // Railway internal network
+    });
     this.db = drizzle(pool);
     console.log('[POSTGRES_STORAGE] Initialized with DATABASE_URL');
   }
