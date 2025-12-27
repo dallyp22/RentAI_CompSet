@@ -2205,45 +2205,6 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Simulate scraping completion (in real implementation, this would be called by Firecrawl webhook)
-            totalStored: scrapedProperties.length,
-            matchThreshold: 50, // Updated threshold
-            fallbackUsed: bestMatch.score < 50 && subjectPropertyFound,
-            fallbackType: bestMatch.score >= 50 ? 'exact_match' : 
-                         bestMatch.score >= 40 ? 'good_match_fallback' :
-                         bestMatch.score > 0 ? 'forced_best_match' : 
-                         'first_property_fallback',
-            bestMatchScore: bestMatch.score,
-            subjectPropertyData: {
-              name: property.propertyName,
-              address: property.address
-            },
-            subjectPropertyMarked: subjectPropertyFound,
-            markedProperty: scrapedProperties.find(p => p.isSubjectProperty) || null
-          }
-        });
-
-      } catch (scrapingError) {
-        console.error("Firecrawl API error:", scrapingError);
-        
-        // Update job status to failed
-        await storage.updateScrapingJob(scrapingJob.id, {
-          status: "failed",
-          errorMessage: scrapingError instanceof Error ? scrapingError.message : "Unknown scraping error"
-        });
-
-        res.status(500).json({ 
-          message: "Scraping failed",
-          error: scrapingError instanceof Error ? scrapingError.message : "Unknown error",
-          details: scrapingError instanceof Error ? scrapingError.stack : undefined
-        });
-      }
-    } catch (error) {
-      console.error("Error starting scraping job:", error);
-      res.status(500).json({ message: "Failed to start scraping job" });
-    }
-  });
-
-  // Simulate scraping completion (in real implementation, this would be called by Firecrawl webhook)
   app.post("/api/scraping/:jobId/complete", async (req, res) => {
     try {
       const jobId = req.params.jobId;
