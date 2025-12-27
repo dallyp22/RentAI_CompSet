@@ -93,7 +93,6 @@ export default function Sidebar() {
           })}
         </div>
         
-        <WorkflowProgress />
       </nav>
     </div>
   );

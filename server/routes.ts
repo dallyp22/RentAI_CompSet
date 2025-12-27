@@ -8,216 +8,16 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key" 
 });
 
-const SCRAPEZY_API_KEY = process.env.SCRAPEZY_API_KEY;
-const SCRAPEZY_BASE_URL = "https://scrapezy.com/api/extract";
+// Firecrawl Extract Integration
+const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
 
-// Scrapezy API integration functions
-async function callScrapezyScraping(url: string, customPrompt?: string) {
-  console.log(`🚀 [SCRAPEZY] Starting scraping for URL: ${url}`);
-  console.log(`🚀 [SCRAPEZY] API Key configured: ${!!SCRAPEZY_API_KEY}`);
-  console.log(`🚀 [SCRAPEZY] Base URL: ${SCRAPEZY_BASE_URL}`);
-  
-  if (!SCRAPEZY_API_KEY) {
-    console.error(`❌ [SCRAPEZY] API key not configured`);
-    throw new Error("Scrapezy API key not configured");
-  }
-
-  const prompt = customPrompt || "Extract apartment listings from this apartments.com page. For each apartment property listing, extract: 1) The complete URL link to the individual apartment page (must start with https://www.apartments.com/), 2) The property/apartment name or title, 3) The address or location information. Return as JSON array with objects containing \"url\", \"name\", and \"address\" fields.";
-  
-  console.log(`🚀 [SCRAPEZY] Using prompt: ${prompt.substring(0, 100)}...`);
-
-  // Create job
-  console.log(`🚀 [SCRAPEZY] Creating scraping job...`);
-  const requestBody = {
-    url,
-    prompt
-  };
-  console.log(`🚀 [SCRAPEZY] Request body:`, JSON.stringify(requestBody, null, 2));
-  
-  const jobResponse = await fetch(SCRAPEZY_BASE_URL, {
-    method: "POST",
-    headers: {
-      "x-api-key": SCRAPEZY_API_KEY,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(requestBody),
-    signal: AbortSignal.timeout(30000)
-  });
-
-  console.log(`🚀 [SCRAPEZY] Job creation response status: ${jobResponse.status} ${jobResponse.statusText}`);
-  console.log(`🚀 [SCRAPEZY] Job creation response headers:`, Object.fromEntries(jobResponse.headers.entries()));
-
-  if (!jobResponse.ok) {
-    const responseText = await jobResponse.text();
-    console.error(`❌ [SCRAPEZY] Job creation failed. Response body: ${responseText}`);
-    throw new Error(`Scrapezy API error: ${jobResponse.status} ${jobResponse.statusText}`);
-  }
-
-  const jobData = await jobResponse.json();
-  console.log(`🚀 [SCRAPEZY] Job creation response data:`, JSON.stringify(jobData, null, 2));
-  
-  const jobId = jobData.id || jobData.jobId;
-  
-  if (!jobId) {
-    console.error(`❌ [SCRAPEZY] No job ID received from response`);
-    console.error(`❌ [SCRAPEZY] Full response data keys:`, Object.keys(jobData));
-    throw new Error('No job ID received from Scrapezy');
-  }
-
-  console.log(`🚀 [SCRAPEZY] Job created successfully with ID: ${jobId}`);
-
-  // Poll for results
-  let attempts = 0;
-  const maxAttempts = 15; // 2.5 minutes maximum
-  const POLL_INTERVAL = 10000; // 10 seconds
-  let finalResult = null;
-
-  console.log(`🚀 [SCRAPEZY] Starting polling for job ${jobId} (max ${maxAttempts} attempts, ${POLL_INTERVAL}ms interval)`);
-
-  while (attempts < maxAttempts) {
-    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
-    attempts++;
-    
-    console.log(`🚀 [SCRAPEZY] Polling attempt ${attempts}/${maxAttempts} for job ${jobId}`);
-    
-    const resultResponse = await fetch(`${SCRAPEZY_BASE_URL}/${jobId}`, {
-      headers: {
-        "x-api-key": SCRAPEZY_API_KEY,
-        "Content-Type": "application/json"
-      },
-      signal: AbortSignal.timeout(30000)
-    });
-
-    console.log(`🚀 [SCRAPEZY] Polling response status: ${resultResponse.status} ${resultResponse.statusText}`);
-
-    if (!resultResponse.ok) {
-      const responseText = await resultResponse.text();
-      console.error(`❌ [SCRAPEZY] Polling failed. Response body: ${responseText}`);
-      throw new Error(`Scrapezy polling error: ${resultResponse.status} ${resultResponse.statusText}`);
-    }
-
-    const resultData = await resultResponse.json();
-    console.log(`🚀 [SCRAPEZY] Polling response data:`, JSON.stringify(resultData, null, 2));
-    
-    if (resultData.status === 'completed') {
-      console.log(`✅ [SCRAPEZY] Job ${jobId} completed successfully!`);
-      console.log(`✅ [SCRAPEZY] Final result structure:`, typeof resultData.result, Array.isArray(resultData.result) ? `Array[${resultData.result.length}]` : `Object with keys: ${Object.keys(resultData.result || {})}`);
-      finalResult = resultData;
-      break;
-    } else if (resultData.status === 'failed') {
-      console.error(`❌ [SCRAPEZY] Job ${jobId} failed:`, resultData.error || 'Unknown error');
-      throw new Error(`Scrapezy job failed: ${resultData.error || 'Unknown error'}`);
-    } else {
-      console.log(`⏳ [SCRAPEZY] Job ${jobId} still processing, status: ${resultData.status}`);
-    }
-    // Continue polling if status is pending
-  }
-
-  if (!finalResult && attempts >= maxAttempts) {
-    console.error(`❌ [SCRAPEZY] Job ${jobId} timed out after ${maxAttempts} attempts (${(maxAttempts * POLL_INTERVAL) / 1000} seconds)`);
-    throw new Error('Scrapezy job timed out after 2.5 minutes');
-  }
-
-  console.log(`🎉 [SCRAPEZY] Returning final result for job ${jobId}`);
-  return finalResult;
+interface PropertyListing {
+  url: string;
+  name: string;
+  address: string;
 }
 
-// Parse Scrapezy results to extract property URLs
-function parseUrls(scrapezyResult: any): Array<{url: string, name: string, address: string}> {
-  console.log(`🔍 [PARSE_URLS] Starting URL parsing...`);
-  console.log(`🔍 [PARSE_URLS] Input data type: ${typeof scrapezyResult}`);
-  console.log(`🔍 [PARSE_URLS] Input data keys:`, Object.keys(scrapezyResult || {}));
-  console.log(`🔍 [PARSE_URLS] Full input structure:`, JSON.stringify(scrapezyResult, null, 2));
-  
-  let properties = [];
-  
-  try {
-    // Try to get the result from the response structure
-    const resultText = scrapezyResult.result || scrapezyResult.data || scrapezyResult;
-    console.log(`🔍 [PARSE_URLS] Extracted result text type: ${typeof resultText}`);
-    console.log(`🔍 [PARSE_URLS] Result text keys:`, typeof resultText === 'object' ? Object.keys(resultText) : 'N/A');
-    
-    if (typeof resultText === 'string') {
-      try {
-        const parsed = JSON.parse(resultText);
-        
-        // Check for listings, apartment_listings or apartments key (Scrapezy format)
-        const apartmentData = parsed.listings || parsed.apartment_listings || parsed.apartments;
-        if (apartmentData && Array.isArray(apartmentData)) {
-          properties = apartmentData.filter(item => 
-            item && 
-            typeof item === 'object' && 
-            item.url && 
-            typeof item.url === 'string' &&
-            item.url.includes('apartments.com') &&
-            item.url.startsWith('http')
-          );
-        }
-        // Also check if it's a direct array
-        else if (Array.isArray(parsed)) {
-          properties = parsed.filter(item => 
-            item && 
-            typeof item === 'object' && 
-            item.url && 
-            typeof item.url === 'string' &&
-            item.url.includes('apartments.com') &&
-            item.url.startsWith('http')
-          );
-        }
-      } catch (parseError) {
-        console.warn('Failed to parse JSON result, trying fallback parsing');
-        // Fallback: try to extract URLs from text
-        const lines = resultText.split('\n');
-        for (const line of lines) {
-          if (line.includes('apartments.com') && line.startsWith('http')) {
-            properties.push({
-              url: line.trim(),
-              name: 'Property',
-              address: 'Address not available'
-            });
-          }
-        }
-      }
-    } else if (typeof resultText === 'object' && resultText !== null) {
-      // Handle object response (already parsed)
-      const apartmentDataObj = resultText.listings || resultText.apartment_listings || resultText.apartments;
-      if (apartmentDataObj && Array.isArray(apartmentDataObj)) {
-        properties = apartmentDataObj.filter(item => 
-          item && 
-          typeof item === 'object' && 
-          item.url && 
-          typeof item.url === 'string' &&
-          item.url.includes('apartments.com')
-        );
-      } else if (Array.isArray(resultText)) {
-        properties = resultText.filter(item => 
-          item && 
-          typeof item === 'object' && 
-          item.url && 
-          typeof item.url === 'string' &&
-          item.url.includes('apartments.com')
-        );
-      }
-    }
-  } catch (error) {
-    console.error('Error parsing Scrapezy result:', error);
-  }
-
-  // Ensure all properties have required fields and deduplicate
-  const validProperties = properties
-    .map(prop => ({
-      url: prop.url?.trim() || '',
-      name: prop.name?.trim() || 'Property Name Not Available',
-      address: prop.address?.trim() || 'Address Not Available'
-    }))
-    .filter(prop => prop.url)
-    .filter((prop, index, arr) => arr.findIndex(p => p.url === prop.url) === index);
-
-  return validProperties;
-}
-
-// Parse Scrapezy results to extract unit details
-function parseUnitData(scrapezyResult: any): Array<{
+interface UnitDetails {
   unitNumber?: string;
   floorPlanName?: string;
   unitType: string;
@@ -226,107 +26,261 @@ function parseUnitData(scrapezyResult: any): Array<{
   squareFootage?: number;
   rent?: number;
   availabilityDate?: string;
-}> {
-  let units = [];
+}
+
+/**
+ * Call Firecrawl Scrape API for data extraction
+ * Using scrape instead of extract for immediate results
+ * @param url - URL to scrape
+ * @param prompt - Description of what to extract
+ * @param schema - JSON schema for output structure
+ */
+async function callFirecrawlScrape(
+  url: string,
+  prompt: string,
+  schema: any
+): Promise<any> {
+  console.log(`🔥 [FIRECRAWL] Scraping URL: ${url}`);
+  console.log(`🔥 [FIRECRAWL] Prompt: ${prompt.substring(0, 100)}...`);
   
+  if (!FIRECRAWL_API_KEY) {
+    console.error(`❌ [FIRECRAWL] API key not configured`);
+    throw new Error("Firecrawl API key not configured");
+  }
+
   try {
-    // Try to get the result from the response structure
-    const resultText = scrapezyResult.result || scrapezyResult.data || scrapezyResult;
-    console.log(`Parsing unit data. Result type: ${typeof resultText}, structure keys:`, typeof resultText === 'object' ? Object.keys(resultText) : 'N/A');
-    
-    if (typeof resultText === 'string') {
-      try {
-        const parsed = JSON.parse(resultText);
-        
-        // Check for different possible keys for unit data
-        // Handle nested "root" structure that Scrapezy uses
-        const rootData = parsed.root || parsed;
-        const unitData = rootData.units || rootData.availableUnits || rootData.apartment_units || rootData.listings || parsed.units || parsed.apartment_units || parsed.listings || parsed;
-        if (Array.isArray(unitData)) {
-          units = unitData.filter(item => 
-            item && 
-            typeof item === 'object' && 
-            (item.unitType || item.unit_type || item.type)
-          );
+    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url,
+        formats: ['extract'],
+        extract: {
+          prompt,
+          schema
         }
-      } catch (parseError) {
-        console.warn('Failed to parse JSON result for units, trying fallback parsing');
-        // Fallback: try to extract basic unit info from text
-        const lines = resultText.split('\n');
-        for (const line of lines) {
-          if (line.includes('BR') || line.includes('Studio') || line.includes('bedroom')) {
-            units.push({
-              unitType: line.trim(),
-              bedrooms: extractBedroomCount(line),
-              bathrooms: extractBathroomCount(line),
-              rent: extractRentPrice(line)
-            });
-          }
-        }
-      }
-    } else if (typeof resultText === 'object' && resultText !== null) {
-      // Handle object response (already parsed)
-      // Handle nested "root" structure that Scrapezy uses
-      const rootData = resultText.root || resultText;
-      const unitDataObj = rootData.units || rootData.availableUnits || rootData.apartment_units || rootData.listings || resultText.units || resultText.apartment_units || resultText.listings;
-      if (Array.isArray(unitDataObj)) {
-        units = unitDataObj.filter(item => 
-          item && 
-          typeof item === 'object' && 
-          (item.unitType || item.unit_type || item.type)
-        );
-      } else if (Array.isArray(resultText)) {
-        units = resultText.filter(item => 
-          item && 
-          typeof item === 'object' && 
-          (item.unitType || item.unit_type || item.type)
-        );
-      }
+      }),
+      signal: AbortSignal.timeout(120000) // 2 minute timeout
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ [FIRECRAWL] Scrape failed: ${response.status}`);
+      console.error(`❌ [FIRECRAWL] Error: ${errorText}`);
+      throw new Error(`Firecrawl scrape error: ${response.status} ${response.statusText}`);
     }
+
+    const result = await response.json();
+    console.log(`✅ [FIRECRAWL] Scraping completed successfully`);
+    console.log(`🔍 [FIRECRAWL] Response keys:`, Object.keys(result));
+    
+    // Firecrawl scrape returns data in result.data.extract
+    return result.data?.extract || result.extract || result.data || result;
   } catch (error) {
-    console.error('Error parsing Scrapezy unit result:', error);
+    console.error(`❌ [FIRECRAWL] Scraping failed:`, error);
+    throw error;
   }
-
-  // Normalize and validate unit data
-  const validUnits = units
-    .map(unit => ({
-      unitNumber: unit.unitNumber || unit.unit_number || null,
-      floorPlanName: unit.floorPlanName || unit.floor_plan_name || unit.planName || unit.plan_name || null,
-      unitType: unit.unitType || unit.unit_type || unit.type || 'Unknown',
-      bedrooms: parseNumber(unit.bedrooms || unit.bedroom_count),
-      bathrooms: parseNumber(unit.bathrooms || unit.bathroom_count),
-      squareFootage: parseNumber(unit.squareFootage || unit.square_footage || unit.sqft),
-      rent: parseNumber(unit.rent || unit.price || unit.monthlyRent),
-      availabilityDate: unit.availabilityDate || unit.availability_date || unit.available || null
-    }))
-    .filter(unit => unit.unitType && unit.unitType !== 'Unknown');
-
-  return validUnits;
 }
 
-// Helper functions for unit data parsing
-function extractBedroomCount(text: string): number | undefined {
-  const match = text.match(/(\d+)\s*BR|(\d+)\s*bedroom/i);
-  return match ? parseInt(match[1] || match[2]) : undefined;
+/**
+ * Discover property listings from apartments.com search page
+ */
+async function discoverProperties(cityUrl: string): Promise<PropertyListing[]> {
+  const prompt = `Extract all apartment property listings from this apartments.com search results page. 
+  
+For EACH property listing card/result, extract:
+- url: The complete URL link to the property's detail page (must start with https://www.apartments.com/ and go to the specific property)
+- name: The property name/title shown on the listing
+- address: The full street address shown (e.g., "123 Main St, Omaha, NE 68131")
+
+IMPORTANT: 
+- Extract the ACTUAL street address, not just city/state
+- If no street address is shown on the listing, extract whatever location info is available
+- Look for addresses in the listing card, property title, or property description
+- Return ALL property listings found on the page`;
+
+  const schema = {
+    type: "object",
+    properties: {
+      properties: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            url: { 
+              type: "string",
+              description: "Full URL to property detail page on apartments.com"
+            },
+            name: { 
+              type: "string",
+              description: "Property name or title"
+            },
+            address: { 
+              type: "string",
+              description: "Street address with city and state, or best available location info"
+            }
+          },
+          required: ["url", "name"]
+        }
+      }
+    },
+    required: ["properties"]
+  };
+
+  const result = await callFirecrawlScrape(cityUrl, prompt, schema);
+  const properties = result.properties || [];
+  
+  console.log(`🔥 [FIRECRAWL] Found ${properties.length} properties`);
+  console.log(`🔥 [FIRECRAWL] Sample property:`, properties[0]);
+  
+  // Filter and validate - address is now optional since listings may not show full addresses
+  return properties.filter((prop: PropertyListing) => 
+    prop.url && 
+    prop.url.includes('apartments.com') &&
+    prop.name
+  ).map(prop => ({
+    ...prop,
+    address: prop.address || 'Address to be determined' // Provide default if missing
+  }));
 }
 
-function extractBathroomCount(text: string): number | undefined {
-  const match = text.match(/(\d+(?:\.\d+)?)\s*BA|(\d+(?:\.\d+)?)\s*bathroom/i);
-  return match ? parseFloat(match[1] || match[2]) : undefined;
+/**
+ * Extract unit details from property page
+ */
+async function extractUnitDetails(propertyUrl: string): Promise<UnitDetails[]> {
+  const prompt = `Extract all available apartment units from this property page. For each unit:
+- unitNumber: The unit identifier (like "1-332", "A101") if shown
+- floorPlanName: The marketing name (like "New York", "Portland") if shown  
+- unitType: Unit type (e.g., "Studio", "1BR/1BA", "2BR/2BA") - REQUIRED
+- bedrooms: Number of bedrooms as integer
+- bathrooms: Number of bathrooms as decimal (1.0, 1.5, 2.0)
+- squareFootage: Square footage as integer
+- rent: Monthly rent as number (no $ symbol)
+- availabilityDate: When the unit is available
+
+Note: Extract either unitNumber OR floorPlanName, whichever is shown.`;
+
+  const schema = {
+    type: "object",
+    properties: {
+      units: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            unitNumber: { type: "string" },
+            floorPlanName: { type: "string" },
+            unitType: { type: "string" },
+            bedrooms: { type: "number" },
+            bathrooms: { type: "number" },
+            squareFootage: { type: "number" },
+            rent: { type: "number" },
+            availabilityDate: { type: "string" }
+          },
+          required: ["unitType"]
+        }
+      }
+    },
+    required: ["units"]
+  };
+
+  const result = await callFirecrawlScrape(propertyUrl, prompt, schema);
+  const units = result.units || [];
+  
+  console.log(`🔥 [FIRECRAWL] Found ${units.length} units`);
+  
+  return units.filter((unit: UnitDetails) => unit.unitType);
 }
 
-function extractRentPrice(text: string): number | undefined {
-  const match = text.match(/\$(\d{1,3}(?:,\d{3})*)/);
-  return match ? parseInt(match[1].replace(/,/g, '')) : undefined;
-}
-
-function parseNumber(value: any): number | undefined {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const num = parseFloat(value.replace(/[,$]/g, ''));
-    return isNaN(num) ? undefined : num;
+/**
+ * Parse city and state from address string
+ */
+function parseCityStateFromAddress(address: string): { city: string | null; state: string | null } {
+  // Try to extract city, state pattern: "City, ST" or "City, ST ZIP"
+  const pattern = /,\s*([A-Za-z\s]+),?\s+([A-Z]{2})(?:\s+\d{5})?/;
+  const match = address.match(pattern);
+  
+  if (match) {
+    return {
+      city: match[1].trim(),
+      state: match[2].trim()
+    };
   }
-  return undefined;
+  
+  // Fallback: try simpler pattern
+  const simplePattern = /,\s*([A-Za-z\s]+)\s+([A-Z]{2})/;
+  const simpleMatch = address.match(simplePattern);
+  
+  if (simpleMatch) {
+    return {
+      city: simpleMatch[1].trim(),
+      state: simpleMatch[2].trim()
+    };
+  }
+  
+  return { city: null, state: null };
+}
+
+/**
+ * Get property details from Firecrawl by searching apartments.com
+ */
+async function getPropertyDetailsFromFirecrawl(propertyName: string, address: string): Promise<any> {
+  try {
+    console.log(`🔍 [PROPERTY_DETAILS] Searching for: ${propertyName} at ${address}`);
+    
+    const { city, state } = parseCityStateFromAddress(address);
+    if (!city || !state) {
+      console.log(`⚠️ [PROPERTY_DETAILS] Could not parse city/state from address`);
+      return null;
+    }
+    
+    // Extract ZIP if available
+    const zipMatch = address.match(/\d{5}/);
+    const searchUrl = zipMatch 
+      ? `https://www.apartments.com/${city.toLowerCase().replace(/\s+/g, '-')}-${state.toLowerCase()}-${zipMatch[0]}/`
+      : `https://www.apartments.com/${city.toLowerCase().replace(/\s+/g, '-')}-${state.toLowerCase()}/`;
+    
+    console.log(`🔍 [PROPERTY_DETAILS] Search URL: ${searchUrl}`);
+    
+    // Search for the specific property
+    const properties = await discoverProperties(searchUrl);
+    
+    // Find the best match for our property
+    const normalizedName = propertyName.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+    const match = properties.find(p => {
+      const pName = p.name.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+      return pName.includes(normalizedName) || normalizedName.includes(pName);
+    });
+    
+    if (match) {
+      console.log(`✅ [PROPERTY_DETAILS] Found property match: ${match.name}`);
+      console.log(`✅ [PROPERTY_DETAILS] URL: ${match.url}`);
+      
+      // Now scrape the property page for details
+      const details = await extractUnitDetails(match.url);
+      const totalUnits = details.length;
+      
+      console.log(`✅ [PROPERTY_DETAILS] Found ${totalUnits} units`);
+      
+      return {
+        url: match.url,
+        totalUnits,
+        unitTypes: [...new Set(details.map(u => u.unitType))],
+        avgRent: details.length > 0 
+          ? Math.round(details.reduce((sum, u) => sum + (u.rent || 0), 0) / details.filter(u => u.rent).length)
+          : null
+      };
+    }
+    
+    console.log(`⚠️ [PROPERTY_DETAILS] No match found for ${propertyName}`);
+    return null;
+  } catch (error) {
+    console.error(`❌ [PROPERTY_DETAILS] Error getting property details:`, error);
+    return null;
+  }
 }
 
 
@@ -337,8 +291,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const propertyData = insertPropertySchema.parse(req.body);
       
-      // Create property
-      const property = await storage.createProperty(propertyData);
+      // Parse city and state from address
+      const { city, state } = parseCityStateFromAddress(propertyData.address);
+      
+      // Get property details from Firecrawl in parallel with property creation
+      const firecrawlDetailsPromise = getPropertyDetailsFromFirecrawl(
+        propertyData.propertyName, 
+        propertyData.address
+      ).catch(err => {
+        console.warn('[PROPERTY_CREATION] Firecrawl details fetch failed, continuing without:', err);
+        return null;
+      });
+      
+      // Create property with parsed city/state
+      const property = await storage.createProperty({
+        ...propertyData,
+        city: city || propertyData.city,
+        state: state || propertyData.state
+      });
       
       // Initialize workflow state for the new property
       console.log('[WORKFLOW] Initializing workflow state for property:', property.id);
@@ -348,15 +318,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         currentStage: 'input'
       });
       
+      // Wait for Firecrawl details
+      const firecrawlDetails = await firecrawlDetailsPromise;
+      console.log('[PROPERTY_CREATION] Firecrawl details:', firecrawlDetails);
+      
+      // Update property with Firecrawl data if available
+      if (firecrawlDetails && firecrawlDetails.totalUnits) {
+        await storage.updateProperty(property.id, {
+          totalUnits: firecrawlDetails.totalUnits
+        });
+        property.totalUnits = firecrawlDetails.totalUnits;
+      }
+      
       // Generate AI analysis using comprehensive public data prompt
-      const prompt = `Using only publicly available data, summarize the apartment property "${property.propertyName}" located at ${property.address}. Please include:
+      let analysisData;
+      
+      // Check if OpenAI API key is configured
+      if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'default_key' && process.env.OPENAI_API_KEY !== 'your_openai_api_key_here') {
+        const prompt = `Using only publicly available data, summarize the apartment property "${property.propertyName}" located at ${property.address}. Please include:
 
 Basic Property Info
 • Property Name: ${property.propertyName}
-• Number of units (estimated if not listed): ${property.totalUnits || 'please estimate'}
+• Location: ${city || 'Unknown'}, ${state || 'Unknown'}
+• Number of units: ${property.totalUnits || (firecrawlDetails?.totalUnits) || 'please estimate'}
+• Unit types available: ${firecrawlDetails?.unitTypes?.join(', ') || 'please research'}
+• Average rent: ${firecrawlDetails?.avgRent ? `$${firecrawlDetails.avgRent}` : 'please estimate'}
 • Year built: ${property.builtYear || 'please research'}
-• Property type (e.g., garden-style, mid-rise, high-rise): ${property.propertyType || 'please identify'}
-• Approximate square footage (if available): ${property.squareFootage || 'please estimate if available'}
+• Property type (e.g., garden-style, mid-rise, high-rise): ${property.propertyType || 'please identify based on units and location'}
 
 Listings & Rent Estimates
 • Recent or active rental listings (unit mix, price range)
@@ -385,13 +373,31 @@ Please provide your analysis in this exact JSON format:
   "recommendations": ["specific recommendation based on data", "another data-driven recommendation", "third actionable recommendation"]
 }`;
 
-      const aiResponse = await openai.chat.completions.create({
-        model: "gpt-4o", // Using gpt-4o which is widely available
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" }
-      });
+        const aiResponse = await openai.chat.completions.create({
+          model: "gpt-4o", // Using gpt-4o which is widely available
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" }
+        });
 
-      const analysisData = JSON.parse(aiResponse.choices[0].message.content || "{}");
+        analysisData = JSON.parse(aiResponse.choices[0].message.content || "{}");
+      } else {
+        // Use mock data when OpenAI is not configured
+        console.warn('⚠️ OpenAI API key not configured - using mock analysis data');
+        analysisData = {
+          marketPosition: `${property.propertyName} is ready for competitive analysis. Configure OpenAI API key for AI-powered market insights.`,
+          competitiveAdvantages: [
+            "Property location analysis pending",
+            "Amenities comparison pending",
+            "Market positioning pending"
+          ],
+          pricingInsights: "Pricing analysis will be available after competitor data is scraped using Firecrawl.",
+          recommendations: [
+            "Proceed to scrape competitor data",
+            "Review market comparisons on the Summarize page",
+            "Configure OpenAI API key for enhanced AI analysis"
+          ]
+        };
+      }
       
       // Save analysis
       const analysis = await storage.createPropertyAnalysis({
@@ -590,7 +596,7 @@ Please provide your analysis in this exact JSON format:
       }));
 
       console.log(`[GET_COMPETITORS] ✅ Returning ${competitors.length} scraped competitors`);
-      console.log('[GET_COMPETITORS] Data source: Real Scrapezy scraped data');
+      console.log('[GET_COMPETITORS] Data source: Real Firecrawl scraped data');
       console.log('[GET_COMPETITORS] ===========================================');
       
       // Return array directly for backward compatibility, but log that it's scraped data
@@ -768,7 +774,7 @@ Please provide your analysis in this exact JSON format:
       console.log('[FILTERED_ANALYSIS]   - Competitor units for comparison:', analysis.competitorUnits.length);
       console.log('[FILTERED_ANALYSIS]   - Market position:', analysis.marketPosition);
       console.log('[FILTERED_ANALYSIS]   - Percentile rank:', analysis.percentileRank);
-      console.log('[FILTERED_ANALYSIS]   - Data source: Real Scrapezy scraped data');
+      console.log('[FILTERED_ANALYSIS]   - Data source: Real Firecrawl scraped data');
       
       // Generate AI insights if OpenAI is configured
       if (process.env.OPENAI_API_KEY) {
@@ -816,14 +822,18 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             max_tokens: 300
           });
           
-          const aiResponse = completion.choices[0]?.message?.content || "[]";
+          let aiResponse = completion.choices[0]?.message?.content || "[]";
           try {
+            // Strip markdown code blocks if present
+            aiResponse = aiResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            
             const insights = JSON.parse(aiResponse);
             if (Array.isArray(insights) && insights.length > 0) {
               analysis.aiInsights = insights.slice(0, 3);
             }
           } catch (parseError) {
             console.warn("Failed to parse AI insights:", parseError);
+            console.warn("Raw AI response:", aiResponse);
             // Keep the placeholder insights if AI fails
           }
         } catch (aiError) {
@@ -1199,13 +1209,8 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             status: "processing"
           });
 
-          // Call Scrapezy API for unit-level data
-          const unitPrompt = `Extract detailed unit information from this apartments.com property page. For each available apartment unit, extract: 1) Unit number (actual unit identifier like "1-332", "A101", etc - if available), 2) Floor plan name (marketing name like "New York", "Portland", "Green Lodge - One Bedroom", etc - if available), 3) Unit type (e.g., "Studio", "1BR/1BA", "2BR/2BA"), 4) Number of bedrooms (as integer), 5) Number of bathrooms (as decimal like 1.0, 1.5, 2.0), 6) Square footage (as integer, if available), 7) Monthly rent price (as number, extract only the numerical value), 8) Availability date or status. IMPORTANT: Some properties show unit numbers while others show floor plan names instead. Capture whichever identifier is present. Return as JSON array with objects containing "unitNumber", "floorPlanName", "unitType", "bedrooms", "bathrooms", "squareFootage", "rent", "availabilityDate" fields.`;
-
-          const scrapezyResult = await callScrapezyScraping(property.url, unitPrompt);
-          
-          // Parse the scraped unit data
-          const unitData = parseUnitData(scrapezyResult);
+          // Call Firecrawl Extract API for unit-level data
+          const unitData = await extractUnitDetails(property.url);
           
           console.log(`Found ${unitData.length} units for property: ${property.name}`);
           
@@ -1507,7 +1512,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       console.log('[VACANCY_SUMMARY] Subject property:', subjectData.name);
       console.log('[VACANCY_SUMMARY] Vacancy rate:', subjectData.vacancyRate + '%');
       console.log('[VACANCY_SUMMARY] Total units analyzed:', subjectUnits.length);
-      console.log('[VACANCY_SUMMARY] Data source: Real Scrapezy scraped data');
+      console.log('[VACANCY_SUMMARY] Data source: Real Firecrawl scraped data');
       console.log('[VACANCY_SUMMARY] ===========================================');
       res.json(response);
 
@@ -1944,37 +1949,28 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         status: "processing"
       });
 
-      // Real Scrapezy API call for single-page city scraping
+      // Real Firecrawl Extract API call for single-page city scraping
       try {
         const urls = [
           `https://www.${cityUrl}`
         ];
 
-        console.log(`[SCRAPE] Calling Scrapezy API with URL:`, urls[0]);
+        console.log(`[SCRAPE] Calling Firecrawl Extract API with URL:`, urls[0]);
         
-        // Scrape single page
+        // Scrape single page using Firecrawl
         let allProperties = [];
-        const jobIds = [];
         let scrapingSucceeded = false;
         
         for (const url of urls) {
           try {
             console.log(`Scraping: ${url}`);
-            const pageResult = await callScrapezyScraping(url);
-            
-            if (pageResult && pageResult.id) {
-              jobIds.push(pageResult.id);
-            }
-            
-            // Parse the results from this page
-            const pageProperties = parseUrls(pageResult);
+            const pageProperties = await discoverProperties(url);
             console.log(`Found ${pageProperties.length} properties on ${url}`);
             allProperties.push(...pageProperties);
             scrapingSucceeded = true;
             
           } catch (pageError) {
             console.error(`Error scraping ${url}:`, pageError);
-            // Check if it's an SSL handshake error
             const errorMessage = pageError instanceof Error ? pageError.message : String(pageError);
             if (errorMessage.includes('525') || errorMessage.includes('SSL handshake')) {
               console.log('🚨 Cloudflare SSL error detected - scraping may fail');
@@ -2121,8 +2117,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           results: { 
             totalProperties: allProperties.length,
             subjectPropertyFound,
-            urls: urls,
-            jobIds: jobIds
+            urls: urls
           }
         });
 
@@ -2142,7 +2137,6 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           targetUrl: `https://www.${cityUrl}`,
           scrapedProperties: scrapedProperties.length,
           subjectPropertyFound,
-          jobIds,
           matchResults,
           subjectProperty: scrapedProperties.find(p => p.isSubjectProperty) || null,
           debugInfo: {
@@ -2165,7 +2159,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         });
 
       } catch (scrapingError) {
-        console.error("Scrapezy API error:", scrapingError);
+        console.error("Firecrawl API error:", scrapingError);
         
         // Update job status to failed
         await storage.updateScrapingJob(scrapingJob.id, {
@@ -2185,7 +2179,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     }
   });
 
-  // Simulate scraping completion (in real implementation, this would be called by Scrapezy webhook)
+  // Simulate scraping completion (in real implementation, this would be called by Firecrawl webhook)
   app.post("/api/scraping/:jobId/complete", async (req, res) => {
     try {
       const jobId = req.params.jobId;

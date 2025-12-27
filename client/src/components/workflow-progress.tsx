@@ -1,61 +1,139 @@
 import { useLocation } from "wouter";
+import { CheckCircle, Circle, Clock, AlertCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useWorkflowState } from "@/hooks/use-workflow-state";
 
-export default function WorkflowProgress() {
+interface WorkflowProgressProps {
+  propertyId?: string;
+  scrapingStats?: {
+    propertiesFound?: number;
+    unitsScraped?: number;
+    matchConfidence?: number;
+  };
+}
+
+export default function WorkflowProgress({ propertyId, scrapingStats }: WorkflowProgressProps) {
   const [location] = useLocation();
+  const { state } = useWorkflowState(propertyId || '');
   
   const steps = [
-    { id: 1, name: "Property Analysis", path: "/" },
-    { id: 2, name: "Competitor Selection", path: "/summarize" },
-    { id: 3, name: "Summary & Analysis", path: "/analyze" },
-    { id: 4, name: "Optimization", path: "/optimize" }
+    { 
+      name: "Input", 
+      path: "/", 
+      label: "Property Details",
+      description: "Enter your property information"
+    },
+    { 
+      name: "Summarize", 
+      path: "/summarize", 
+      label: "Market Summary",
+      description: "Review competitors and market data"
+    },
+    { 
+      name: "Analyze", 
+      path: "/analyze", 
+      label: "Analysis",
+      description: "Deep dive into competitive positioning"
+    },
+    { 
+      name: "Optimize", 
+      path: "/optimize", 
+      label: "Optimization",
+      description: "Generate pricing recommendations"
+    }
   ];
-
-  const getCurrentStep = () => {
-    if (location === "/") return 1;
-    if (location.includes("/summarize")) return 2;
-    if (location.includes("/analyze")) return 3;
-    if (location.includes("/optimize")) return 4;
-    return 1;
+  
+  const currentStepIndex = steps.findIndex(step => 
+    location === "/" ? step.path === "/" : location.startsWith(step.path)
+  );
+  
+  const isStepCompleted = (stepName: string) => {
+    return state?.completedStages?.includes(stepName.toLowerCase()) || false;
   };
-
-  const currentStep = getCurrentStep();
-
+  
   return (
-    <div className="mt-8 p-4 bg-muted rounded-lg" data-testid="workflow-progress">
-      <h3 className="font-semibold mb-4" data-testid="progress-title">Analysis Progress</h3>
-      <div className="space-y-3">
-        {steps.map((step) => {
-          const isActive = step.id === currentStep;
-          const isCompleted = step.id < currentStep;
-          
-          return (
-            <div key={step.id} className="flex items-center" data-testid={`step-${step.id}`}>
-              <div 
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${
-                  isCompleted 
-                    ? "step-completed" 
-                    : isActive 
-                    ? "step-active" 
-                    : "step-inactive"
-                }`}
-                data-testid={`step-circle-${step.id}`}
-              >
-                {step.id}
-              </div>
-              <span 
-                className={`text-sm ${
-                  isActive || isCompleted 
-                    ? "font-medium text-foreground" 
-                    : "text-muted-foreground"
-                }`}
-                data-testid={`step-name-${step.id}`}
-              >
-                {step.name}
-              </span>
-            </div>
-          );
-        })}
+    <div className="space-y-3">
+      <div className="flex items-center justify-center space-x-2 py-4">
+        {steps.map((step, index) => (
+          <div key={step.name} className="flex items-center">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center space-x-2 cursor-help">
+                  {isStepCompleted(step.name) ? (
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  ) : index === currentStepIndex ? (
+                    <Clock className="h-5 w-5 text-blue-600 animate-pulse" />
+                  ) : (
+                    <Circle className="h-5 w-5 text-muted-foreground" />
+                  )}
+                  <span className={`text-sm ${
+                    index === currentStepIndex 
+                      ? "font-semibold text-primary" 
+                      : isStepCompleted(step.name)
+                      ? "font-medium text-green-700"
+                      : "text-muted-foreground"
+                  }`}>
+                    {step.label}
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="font-medium">{step.label}</p>
+                <p className="text-xs text-muted-foreground">{step.description}</p>
+                {isStepCompleted(step.name) && (
+                  <Badge variant="outline" className="mt-1 text-xs">Completed</Badge>
+                )}
+              </TooltipContent>
+            </Tooltip>
+            {index < steps.length - 1 && (
+              <div className={`w-12 h-0.5 mx-2 transition-colors ${
+                index < currentStepIndex ? "bg-green-600" : "bg-muted-foreground/30"
+              }`} />
+            )}
+          </div>
+        ))}
       </div>
+      
+      {/* Data Quality Indicators */}
+      {scrapingStats && (scrapingStats.propertiesFound || scrapingStats.unitsScraped) && (
+        <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
+          {scrapingStats.propertiesFound && (
+            <Badge variant="secondary" className="text-xs">
+              {scrapingStats.propertiesFound} properties found
+            </Badge>
+          )}
+          {scrapingStats.unitsScraped && (
+            <Badge variant="secondary" className="text-xs">
+              {scrapingStats.unitsScraped} units analyzed
+            </Badge>
+          )}
+          {scrapingStats.matchConfidence !== undefined && (
+            <Badge 
+              variant={scrapingStats.matchConfidence >= 70 ? "default" : "outline"}
+              className={`text-xs ${
+                scrapingStats.matchConfidence >= 70 
+                  ? "bg-green-600" 
+                  : scrapingStats.matchConfidence >= 50 
+                  ? "bg-blue-600"
+                  : "bg-yellow-600 text-white"
+              }`}
+            >
+              {scrapingStats.matchConfidence.toFixed(0)}% match confidence
+            </Badge>
+          )}
+        </div>
+      )}
+      
+      {/* Warning if low confidence */}
+      {scrapingStats?.matchConfidence !== undefined && scrapingStats.matchConfidence < 50 && (
+        <div className="flex items-center justify-center">
+          <div className="flex items-center gap-2 text-xs text-yellow-700 bg-yellow-50 px-3 py-1 rounded-full border border-yellow-200">
+            <AlertCircle className="h-3 w-3" />
+            <span>Please verify your subject property on the Summarize page</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

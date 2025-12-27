@@ -148,7 +148,6 @@ export default function UnitListingsTable({
                       Availability
                     </div>
                   </TableHead>
-                  <TableHead className="text-center min-w-[80px]">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -163,11 +162,6 @@ export default function UnitListingsTable({
                       {formatRent(unit.rent)}
                     </TableCell>
                     <TableCell>{formatAvailability(unit.availabilityDate, unit.status)}</TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={getStatusVariant(unit.status)}>
-                        {unit.status || 'Unknown'}
-                      </Badge>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

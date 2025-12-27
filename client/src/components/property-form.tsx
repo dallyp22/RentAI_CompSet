@@ -2,10 +2,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertySchema } from "@shared/schema";
 import type { InsertProperty } from "@shared/schema";
-import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Brain } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Brain, HelpCircle } from "lucide-react";
 import { z } from "zod";
 
 interface PropertyFormProps {
@@ -70,15 +71,31 @@ export default function PropertyForm({ onSubmit, isLoading, initialValues }: Pro
               name="propertyName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-base font-medium">Property Name</FormLabel>
+                  <FormLabel className="text-base font-medium flex items-center gap-2">
+                    Property Name
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">
+                          Enter the official name of your apartment complex or building. 
+                          This helps us accurately match your property in the market data.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </FormLabel>
                   <FormControl>
                     <Input 
-                      placeholder="e.g. Sunset Gardens Apartments" 
+                      placeholder="e.g. The Duo Apartments, Urban Village" 
                       {...field} 
                       data-testid="input-property-name"
                       className="h-12"
                     />
                   </FormControl>
+                  <FormDescription className="text-xs">
+                    Exact name as it appears on listings
+                  </FormDescription>
                 </FormItem>
               )}
             />
@@ -88,15 +105,31 @@ export default function PropertyForm({ onSubmit, isLoading, initialValues }: Pro
               name="address"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-base font-medium">Property Address</FormLabel>
+                  <FormLabel className="text-base font-medium flex items-center gap-2">
+                    Property Address
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">
+                          Full street address including street number, city, state, and ZIP code. 
+                          This is used to find nearby competitors and market comparisons.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </FormLabel>
                   <FormControl>
                     <Input 
-                      placeholder="123 Main St, Omaha, NE 68102" 
+                      placeholder="222 S 15th St, Omaha, NE 68102" 
                       {...field} 
                       data-testid="input-address"
                       className="h-12"
                     />
                   </FormControl>
+                  <FormDescription className="text-xs">
+                    Include street, city, state, and ZIP for best results
+                  </FormDescription>
                 </FormItem>
               )}
             />

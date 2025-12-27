@@ -9,6 +9,7 @@ import { ArrowRight, ArrowLeft, Loader2, CheckCircle, XCircle, Download, Trendin
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import CompetitorSelection from "@/components/competitor-selection";
+import SubjectPropertySelector from "@/components/subject-property-selector";
 import RentComparisonChart from "@/components/rent-comparison-chart";
 import UnitListingsTable from "@/components/unit-listings-table";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
@@ -155,12 +156,20 @@ export default function Summarize({ params }: { params: { id: string } }) {
         description: `Successfully scraped ${data.totalUnitsFound} units from ${data.processedProperties} properties.`
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       setScrapingStage('error');
       console.error('Scraping error:', error);
+      const errorMessage = error?.message || "Unknown error";
+      const isTimeout = errorMessage.includes("timeout");
+      const isNoData = errorMessage.includes("no units") || errorMessage.includes("0 units");
+      
       toast({
-        title: "Scraping Failed",
-        description: "Failed to scrape unit data. Please try again.",
+        title: "Unit Scraping Failed",
+        description: isTimeout
+          ? "Request timed out. The property page may be slow to load. Try:\n• Selecting fewer competitors\n• Trying again in a moment\n• Checking your internet connection"
+          : isNoData
+          ? "No units found on the selected properties. This may mean:\n• Properties have no available units\n• Page structure changed\n• Try different competitors"
+          : `${errorMessage}\n\nYou can:\n• Try again with different competitors\n• Continue with available data\n• Contact support if this persists`,
         variant: "destructive"
       });
     }
@@ -283,8 +292,24 @@ export default function Summarize({ params }: { params: { id: string } }) {
 
   if (propertyQuery.isLoading || competitorsQuery.isLoading) {
     return (
-      <div className="flex items-center justify-center h-64" data-testid="loading-state">
-        <div className="text-muted-foreground">Loading property data...</div>
+      <div className="space-y-6" data-testid="loading-state">
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+              <div>
+                <p className="font-medium text-blue-900">
+                  {propertyQuery.isLoading ? "Loading property details..." : "Discovering competitor properties..."}
+                </p>
+                <p className="text-sm text-blue-700 mt-1">
+                  {propertyQuery.isLoading 
+                    ? "Retrieving your property information" 
+                    : "Analyzing nearby apartments and market data"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -337,6 +362,18 @@ export default function Summarize({ params }: { params: { id: string } }) {
             </div>
           </CardContent>
         </Card>
+      )}
+      
+      {/* Subject Property Selection - Show before competitor selection */}
+      {competitors.length > 0 && (
+        <SubjectPropertySelector
+          propertyId={params.id}
+          allProperties={[...competitors, ...competitors.filter(c => c.isSubjectProperty)]}
+          currentSubjectId={competitors.find(c => c.isSubjectProperty)?.id}
+          onSubjectChanged={() => {
+            competitorsQuery.refetch();
+          }}
+        />
       )}
       
       {!showChart ? (

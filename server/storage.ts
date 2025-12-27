@@ -56,7 +56,7 @@ export interface IStorage {
   createOptimizationReport(report: InsertOptimizationReport): Promise<OptimizationReport>;
   getOptimizationReport(propertyId: string): Promise<OptimizationReport | undefined>;
   
-  // Scrapezy Integration
+  // Firecrawl Integration
   createScrapingJob(job: InsertScrapingJob): Promise<ScrapingJob>;
   getScrapingJob(id: string): Promise<ScrapingJob | undefined>;
   getScrapingJobsByProperty(propertyId: string): Promise<ScrapingJob[]>;
@@ -113,10 +113,10 @@ export class MemStorage implements IStorage {
     this.scrapedProperties = new Map();
     this.scrapedUnits = new Map();
     this.workflowStates = new Map();
-    // Removed seedData() - only use real data from Scrapezy
+    // Removed seedData() - only use real data from Firecrawl
   }
 
-  // Removed seedData() method - only use real data from Scrapezy
+  // Removed seedData() method - only use real data from Firecrawl
   // This ensures only valid apartments.com URLs are used in the scraping workflow
   // All competitor properties will be populated from actual scraping jobs
 
@@ -236,7 +236,7 @@ export class MemStorage implements IStorage {
     );
   }
 
-  // Scrapezy Integration Methods
+  // Firecrawl Integration Methods
   async createScrapingJob(insertJob: InsertScrapingJob): Promise<ScrapingJob> {
     const id = randomUUID();
     const job: ScrapingJob = { 
@@ -244,7 +244,6 @@ export class MemStorage implements IStorage {
       id, 
       createdAt: new Date(),
       completedAt: null,
-      scrapezyJobId: insertJob.scrapezyJobId ?? null,
       status: insertJob.status || "pending",
       results: insertJob.results ?? null,
       errorMessage: insertJob.errorMessage ?? null

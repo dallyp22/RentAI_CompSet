@@ -12,7 +12,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Critical Bug Fixes
 - **Fixed Generate Optimization Button**: Added missing POST /api/properties/:id/units endpoint that creates property units from scraped data or generates basic units when no scraped data is available
-- **Fixed Scraping Display Issue**: Updated parseUrls function to handle Scrapezy's "listings" response format in addition to "apartment_listings"
+- **Migrated to Firecrawl**: Replaced Scrapezy integration with Firecrawl Extract API for more reliable scraping
 - **Fixed Property Values Persistence**: 
   - Added subject property card on summarize page to display property name and address
   - Implemented form value persistence when navigating back to property input page
@@ -53,13 +53,12 @@ Preferred communication style: Simple, everyday language.
 - **Security**: CORS and basic request validation in place
 
 ### Web Scraping Integration
-- **Primary Service**: Scrapezy API for apartment listing discovery and detailed property data extraction
-- **Multi-stage Scraping**: 
-  - Stage 1: URL discovery from search pages
-  - Stage 2: Detailed unit information extraction
-  - Stage 3: Smart caching with automatic refresh
-- **Error Handling**: Robust error handling with individual property failure isolation
-- **Rate Limiting**: Built-in polling mechanism with configurable retry logic
+- **Primary Service**: Firecrawl Extract API for structured apartment data extraction
+- **Process**: 
+  - Stage 1: Extract property listings from apartments.com search pages
+  - Stage 2: Extract unit details from individual property pages
+- **Advantages**: Schema-based extraction, no polling required, reliable anti-bot handling
+- **Error Handling**: Fail-fast with detailed error messages
 
 ### AI Integration
 - **Provider**: OpenAI GPT-5 for property analysis and market insights
@@ -87,9 +86,9 @@ Preferred communication style: Simple, everyday language.
 - **Structured Outputs**: JSON mode for consistent response formatting
 
 ### Web Scraping Services
-- **Scrapezy API**: Professional web scraping service for apartment listings
-- **Rate Limiting**: API-level rate limiting and job queue management
-- **Data Extraction**: AI-powered data extraction with custom prompts
+- **Firecrawl Extract API**: Professional web scraping service for apartment listings
+- **Schema Validation**: Structured data extraction with JSON schema validation
+- **Data Extraction**: AI-powered data extraction with guaranteed output format
 
 ### Development Tools
 - **Vite**: Fast development server and build tool with HMR

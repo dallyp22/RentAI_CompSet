@@ -66,13 +66,12 @@ export const optimizationReports = pgTable("optimization_reports", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
-// Scrapezy scraping jobs and cached data
+// Firecrawl scraping jobs and cached data
 export const scrapingJobs = pgTable("scraping_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   propertyId: varchar("property_id").references(() => properties.id).notNull(),
   stage: text("stage").notNull(), // "city_discovery" or "unit_details"
   cityUrl: text("city_url").notNull(),
-  scrapezyJobId: text("scrapezy_job_id"),
   status: text("status").notNull().default("pending"), // pending, processing, completed, failed
   results: json("results").$type<any>(),
   errorMessage: text("error_message"),

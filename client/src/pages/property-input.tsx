@@ -55,11 +55,19 @@ export default function PropertyInput() {
       // Automatically start scraping after property creation
       startScrapingMutation.mutate(data.property.id);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error("Error creating property:", error);
+      const errorMessage = error?.message || "Unknown error occurred";
+      const isNetworkError = errorMessage.includes("fetch") || errorMessage.includes("network");
+      const isValidationError = errorMessage.includes("validation") || errorMessage.includes("invalid");
+      
       toast({
         title: "Analysis Failed",
-        description: "Failed to analyze your property. Please try again.",
+        description: isNetworkError 
+          ? "Network error. Please check your connection and try again."
+          : isValidationError
+          ? "Invalid property data. Please check all fields and try again."
+          : "Failed to analyze your property. Please verify all information and try again.",
         variant: "destructive",
       });
     }
@@ -81,12 +89,24 @@ export default function PropertyInput() {
       console.error("Error starting scraping:", error);
       const errorMessage = error?.message || "Failed to start competitive data scraping.";
       const isTemporary = errorMessage.includes("temporarily unavailable");
+      const isApiKey = errorMessage.includes("API key") || errorMessage.includes("authentication");
+      const isNetwork = errorMessage.includes("fetch") || errorMessage.includes("timeout");
       
       toast({
-        title: isTemporary ? "Temporary Service Issue" : "Scraping Failed",
-        description: isTemporary 
-          ? "The scraping service is temporarily unavailable due to anti-scraping protection. Please try again in a few minutes."
-          : errorMessage,
+        title: isApiKey 
+          ? "Configuration Error"
+          : isTemporary 
+          ? "Temporary Service Issue" 
+          : isNetwork
+          ? "Network Error"
+          : "Scraping Failed",
+        description: isApiKey
+          ? "Firecrawl API key is not configured. Please check your environment variables."
+          : isTemporary 
+          ? "The scraping service is temporarily blocked. This usually resolves in a few minutes. Try:\n• Waiting 2-3 minutes\n• Using a different zip code\n• Contacting support if it persists"
+          : isNetwork
+          ? "Connection timed out. Please check your internet connection and try again."
+          : `${errorMessage}\n\nTry:\n• Checking the address format\n• Using a different location\n• Retrying in a few moments`,
         variant: "destructive",
       });
     }
