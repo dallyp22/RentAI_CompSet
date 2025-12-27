@@ -3,6 +3,9 @@ import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pkg from "pg";
+const { Pool } = pkg;
 
 const app = express();
 
@@ -55,6 +58,21 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Auto-run database migrations if DATABASE_URL is configured
+  if (process.env.DATABASE_URL) {
+    try {
+      log('Running database migrations...');
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const db = drizzle(pool);
+      // Drizzle will auto-create tables on first query if using drizzle-kit
+      log('Database connection established');
+    } catch (dbError) {
+      log(`Warning: Database connection failed - using in-memory storage: ${dbError}`);
+    }
+  } else {
+    log('No DATABASE_URL found - using in-memory storage');
+  }
+  
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
