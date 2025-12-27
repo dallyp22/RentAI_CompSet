@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { cache, CACHE_DURATIONS } from "./cache";
 import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, filterCriteriaSchema, type ScrapedUnit } from "@shared/schema";
 import OpenAI from "openai";
 
@@ -89,6 +90,14 @@ async function callFirecrawlScrape(
  * Discover property listings from apartments.com search page
  */
 async function discoverProperties(cityUrl: string): Promise<PropertyListing[]> {
+  // Check cache first
+  const cacheKey = `discover:${cityUrl}`;
+  const cached = cache.get(cacheKey, CACHE_DURATIONS.COMPETITOR_PROPERTIES);
+  if (cached) {
+    console.log(`🔥 [FIRECRAWL] Using cached properties for ${cityUrl}`);
+    return cached;
+  }
+  
   const prompt = `Extract all apartment property listings from this apartments.com search results page. 
   
 For EACH property listing card/result, extract:
@@ -137,7 +146,7 @@ IMPORTANT:
   console.log(`🔥 [FIRECRAWL] Sample property:`, properties[0]);
   
   // Filter and validate - address is now optional since listings may not show full addresses
-  return properties.filter((prop: PropertyListing) => 
+  const validProperties = properties.filter((prop: PropertyListing) => 
     prop.url && 
     prop.url.includes('apartments.com') &&
     prop.name
@@ -145,6 +154,11 @@ IMPORTANT:
     ...prop,
     address: prop.address || 'Address to be determined' // Provide default if missing
   }));
+  
+  // Cache the results
+  cache.set(cacheKey, validProperties);
+  
+  return validProperties;
 }
 
 /**
@@ -225,60 +239,60 @@ function parseCityStateFromAddress(address: string): { city: string | null; stat
 }
 
 /**
- * Get property details from Firecrawl by searching apartments.com
+ * Find subject property using Firecrawl Search
+ * More accurate and faster than URL construction + scraping
  */
-async function getPropertyDetailsFromFirecrawl(propertyName: string, address: string): Promise<any> {
+async function findSubjectPropertyWithSearch(
+  propertyName: string, 
+  address: string
+): Promise<{ url: string; name: string; address: string } | null> {
   try {
-    console.log(`🔍 [PROPERTY_DETAILS] Searching for: ${propertyName} at ${address}`);
-    
     const { city, state } = parseCityStateFromAddress(address);
-    if (!city || !state) {
-      console.log(`⚠️ [PROPERTY_DETAILS] Could not parse city/state from address`);
-      return null;
-    }
     
-    // Extract ZIP if available
-    const zipMatch = address.match(/\d{5}/);
-    const searchUrl = zipMatch 
-      ? `https://www.apartments.com/${city.toLowerCase().replace(/\s+/g, '-')}-${state.toLowerCase()}-${zipMatch[0]}/`
-      : `https://www.apartments.com/${city.toLowerCase().replace(/\s+/g, '-')}-${state.toLowerCase()}/`;
+    // Use Firecrawl Search to find the exact listing
+    const searchQuery = `${propertyName} apartments ${city} ${state} site:apartments.com`;
     
-    console.log(`🔍 [PROPERTY_DETAILS] Search URL: ${searchUrl}`);
+    console.log(`🔍 [FIRECRAWL_SEARCH] Query: ${searchQuery}`);
     
-    // Search for the specific property
-    const properties = await discoverProperties(searchUrl);
-    
-    // Find the best match for our property
-    const normalizedName = propertyName.toLowerCase().replace(/[^a-z0-9\s]/g, '');
-    const match = properties.find(p => {
-      const pName = p.name.toLowerCase().replace(/[^a-z0-9\s]/g, '');
-      return pName.includes(normalizedName) || normalizedName.includes(pName);
+    const response = await fetch('https://api.firecrawl.dev/v1/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query: searchQuery,
+        limit: 5,
+        sources: [{ type: 'web' }]
+      }),
+      signal: AbortSignal.timeout(15000) // 15 second timeout
     });
     
-    if (match) {
-      console.log(`✅ [PROPERTY_DETAILS] Found property match: ${match.name}`);
-      console.log(`✅ [PROPERTY_DETAILS] URL: ${match.url}`);
-      
-      // Now scrape the property page for details
-      const details = await extractUnitDetails(match.url);
-      const totalUnits = details.length;
-      
-      console.log(`✅ [PROPERTY_DETAILS] Found ${totalUnits} units`);
-      
-      return {
-        url: match.url,
-        totalUnits,
-        unitTypes: [...new Set(details.map(u => u.unitType))],
-        avgRent: details.length > 0 
-          ? Math.round(details.reduce((sum, u) => sum + (u.rent || 0), 0) / details.filter(u => u.rent).length)
-          : null
-      };
+    if (!response.ok) {
+      throw new Error(`Firecrawl search failed: ${response.status}`);
     }
     
-    console.log(`⚠️ [PROPERTY_DETAILS] No match found for ${propertyName}`);
+    const result = await response.json();
+    const results = result.data || [];
+    
+    console.log(`🔍 [FIRECRAWL_SEARCH] Found ${results.length} results`);
+    
+    // Find best match from search results
+    for (const item of results) {
+      if (item.url && item.url.includes('apartments.com')) {
+        console.log(`✅ [FIRECRAWL_SEARCH] Found: ${item.title} - ${item.url}`);
+        return {
+          url: item.url,
+          name: item.title || propertyName,
+          address: item.description || address
+        };
+      }
+    }
+    
+    console.log(`⚠️ [FIRECRAWL_SEARCH] No apartments.com listing found`);
     return null;
   } catch (error) {
-    console.error(`❌ [PROPERTY_DETAILS] Error getting property details:`, error);
+    console.error(`❌ [FIRECRAWL_SEARCH] Error:`, error);
     return null;
   }
 }
@@ -294,23 +308,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Parse city and state from address
       const { city, state } = parseCityStateFromAddress(propertyData.address);
       
-      // Get property details from Firecrawl in parallel with property creation
-      const firecrawlDetailsPromise = getPropertyDetailsFromFirecrawl(
-        propertyData.propertyName, 
-        propertyData.address
-      ).catch(err => {
-        console.warn('[PROPERTY_CREATION] Firecrawl details fetch failed, continuing without:', err);
-        return null;
-      });
-      
-      // Create property with parsed city/state
+      // Create property immediately with parsed city/state
       const property = await storage.createProperty({
         ...propertyData,
         city: city || propertyData.city,
         state: state || propertyData.state
       });
       
-      // Initialize workflow state for the new property
+      // Initialize workflow state
       console.log('[WORKFLOW] Initializing workflow state for property:', property.id);
       await storage.saveWorkflowState({
         propertyId: property.id,
@@ -318,23 +323,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
         currentStage: 'input'
       });
       
-      // Wait for Firecrawl details
-      const firecrawlDetails = await firecrawlDetailsPromise;
-      console.log('[PROPERTY_CREATION] Firecrawl details:', firecrawlDetails);
+      // Start background job to find subject property using Firecrawl Search
+      // Don't wait for this - it runs async
+      (async () => {
+        try {
+          console.log('[BACKGROUND] Starting subject property search...');
+          
+          const listing = await findSubjectPropertyWithSearch(
+            property.propertyName,
+            property.address
+          );
+          
+          if (listing) {
+            console.log('[BACKGROUND] Creating scraped property record for subject');
+            
+            // Create a scraping job for tracking
+            const job = await storage.createScrapingJob({
+              propertyId: property.id,
+              stage: 'subject_property_search',
+              cityUrl: listing.url,
+              status: 'completed'
+            });
+            
+            // Store as subject property
+            await storage.createScrapedProperty({
+              scrapingJobId: job.id,
+              name: listing.name,
+              url: listing.url,
+              address: listing.address,
+              matchScore: '100',
+              isSubjectProperty: true,
+              distance: null
+            });
+            
+            console.log('[BACKGROUND] Subject property stored, getting unit details...');
+            
+            // Get unit details
+            const units = await extractUnitDetails(listing.url);
+            
+            if (units.length > 0) {
+              await storage.updateProperty(property.id, {
+                totalUnits: units.length
+              });
+              console.log(`[BACKGROUND] Updated property with ${units.length} units`);
+            }
+          }
+        } catch (err) {
+          console.error('[BACKGROUND] Failed to get subject property details:', err);
+        }
+      })();
       
-      // Update property with Firecrawl data if available
-      if (firecrawlDetails && firecrawlDetails.totalUnits) {
-        await storage.updateProperty(property.id, {
-          totalUnits: firecrawlDetails.totalUnits
-        });
-        property.totalUnits = firecrawlDetails.totalUnits;
-      }
-      
-      // Generate AI analysis using comprehensive public data prompt
+      // Generate quick AI analysis (or skip if not configured)
       let analysisData;
       
-      // Check if OpenAI API key is configured
-      if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'default_key' && process.env.OPENAI_API_KEY !== 'your_openai_api_key_here') {
+      // Skip OpenAI analysis for faster response - return placeholder
+      // OpenAI analysis can be generated later if needed
+      analysisData = {
+        marketPosition: `${property.propertyName} in ${city || 'your area'}, ${state || ''} - Market analysis will be available after competitor data is collected.`,
+        competitiveAdvantages: [
+          "Property details are being gathered",
+          "Competitor analysis in progress", 
+          "Detailed insights will appear on the Summarize page"
+        ],
+        pricingInsights: "Pricing insights will be available after collecting competitor rent data and market comparisons.",
+        recommendations: [
+          "Proceed to the Summarize page to view discovered competitors",
+          "Select relevant competitors for detailed comparison",
+          "Complete the Analysis stage for pricing recommendations"
+        ]
+      };
+
+      // Optional: Generate AI analysis in background if configured
+      if (false && process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'default_key' && process.env.OPENAI_API_KEY !== 'your_openai_api_key_here') {
         const prompt = `Using only publicly available data, summarize the apartment property "${property.propertyName}" located at ${property.address}. Please include:
 
 Basic Property Info
@@ -1949,45 +2009,48 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         status: "processing"
       });
 
-      // Real Firecrawl Extract API call for single-page city scraping
-      try {
-        const urls = [
-          `https://www.${cityUrl}`
-        ];
-
-        console.log(`[SCRAPE] Calling Firecrawl Extract API with URL:`, urls[0]);
-        
-        // Scrape single page using Firecrawl
-        let allProperties = [];
-        let scrapingSucceeded = false;
-        
-        for (const url of urls) {
-          try {
-            console.log(`Scraping: ${url}`);
-            const pageProperties = await discoverProperties(url);
-            console.log(`Found ${pageProperties.length} properties on ${url}`);
-            allProperties.push(...pageProperties);
-            scrapingSucceeded = true;
-            
-          } catch (pageError) {
-            console.error(`Error scraping ${url}:`, pageError);
-            const errorMessage = pageError instanceof Error ? pageError.message : String(pageError);
-            if (errorMessage.includes('525') || errorMessage.includes('SSL handshake')) {
-              console.log('🚨 Cloudflare SSL error detected - scraping may fail');
+      // Return immediately - scraping happens in background
+      res.json({
+        scrapingJob: { 
+          ...scrapingJob, 
+          status: "processing" 
+        },
+        message: `Competitor discovery started for ${cityState}. This will complete in the background.`,
+        targetUrl: `https://www.${cityUrl}`,
+        backgroundJob: true
+      });
+      
+      // Background job - continues after response is sent
+      const scrapingJobId = scrapingJob.id;
+      setImmediate(async () => {
+        try {
+          const urls = [`https://www.${cityUrl}`];
+          console.log(`[SCRAPE_BACKGROUND] Starting competitor discovery:`, urls[0]);
+          
+          let allProperties = [];
+          
+          for (const url of urls) {
+            try {
+              const pageProperties = await discoverProperties(url);
+              console.log(`[SCRAPE_BACKGROUND] Found ${pageProperties.length} properties`);
+              allProperties.push(...pageProperties);
+            } catch (pageError) {
+              console.error(`[SCRAPE_BACKGROUND] Error:`, pageError);
             }
-            // Continue with next page even if one fails
           }
-        }
-
-        // If scraping completely failed, throw an error
-        if (!scrapingSucceeded || allProperties.length === 0) {
-          console.error('❌ Scraping failed or returned no results');
-          throw new Error('Unable to retrieve competitor data from apartments.com. The service may be temporarily unavailable due to anti-scraping protection. Please try again later.');
-        }
-
-        console.log(`Total properties found: ${allProperties.length}`);
-        
-        // Store scraped properties and try to match subject property
+          
+          if (allProperties.length === 0) {
+            await storage.updateScrapingJob(scrapingJobId, {
+              status: 'failed',
+              errorMessage: 'No properties found',
+              completedAt: new Date()
+            });
+            return;
+          }
+          
+          console.log(`[SCRAPE_BACKGROUND] Processing ${allProperties.length} properties`);
+          
+          // Store scraped properties and try to match subject property
         const scrapedProperties = [];
         let subjectPropertyFound = false;
         let bestMatch = { property: null as any, score: 0 };
@@ -2110,37 +2173,38 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           }
         }
 
-        // Update job status to completed
-        await storage.updateScrapingJob(scrapingJob.id, {
-          status: "completed",
-          completedAt: new Date(),
-          results: { 
-            totalProperties: allProperties.length,
-            subjectPropertyFound,
-            urls: urls
-          }
-        });
+          // Update job status to completed
+          await storage.updateScrapingJob(scrapingJobId, {
+            status: "completed",
+            completedAt: new Date(),
+            results: { 
+              totalProperties: allProperties.length,
+              subjectPropertyFound,
+              urls: urls
+            }
+          });
+          
+          console.log(`[SCRAPE_BACKGROUND] ✅ Completed! ${scrapedProperties.length} properties stored`);
+          console.log(`[SCRAPE_BACKGROUND] Subject found: ${subjectPropertyFound ? 'YES' : 'NO'}`);
+          
+        } catch (backgroundError) {
+          console.error('[SCRAPE_BACKGROUND] Error:', backgroundError);
+          await storage.updateScrapingJob(scrapingJobId, {
+            status: 'failed',
+            errorMessage: backgroundError instanceof Error ? backgroundError.message : 'Unknown error',
+            completedAt: new Date()
+          });
+        }
+      })();
+      
+    } catch (error) {
+      console.error("Firecrawl API error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      res.status(500).json({ message: "Scraping failed", error: errorMessage, details: String(error) });
+    }
+  });
 
-        // Include match results in response for debugging
-        const matchResults = scrapedProperties.map(sp => ({
-          id: sp.id,
-          name: sp.name,
-          address: sp.address,
-          matchScore: sp.matchScore,
-          isSubjectProperty: sp.isSubjectProperty,
-          url: sp.url
-        }));
-        
-        res.json({ 
-          scrapingJob: { ...scrapingJob, status: "completed" },
-          message: `Successfully scraped ${allProperties.length} properties from ${cityState}`,
-          targetUrl: `https://www.${cityUrl}`,
-          scrapedProperties: scrapedProperties.length,
-          subjectPropertyFound,
-          matchResults,
-          subjectProperty: scrapedProperties.find(p => p.isSubjectProperty) || null,
-          debugInfo: {
-            totalScraped: allProperties.length,
+  // Simulate scraping completion (in real implementation, this would be called by Firecrawl webhook)
             totalStored: scrapedProperties.length,
             matchThreshold: 50, // Updated threshold
             fallbackUsed: bestMatch.score < 50 && subjectPropertyFound,

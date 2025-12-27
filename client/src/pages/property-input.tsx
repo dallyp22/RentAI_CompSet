@@ -26,6 +26,7 @@ export default function PropertyInput() {
   const [result, setResult] = useState<PropertyWithAnalysis | null>(null);
   const [scrapingResult, setScrapingResult] = useState<ScrapingResult | null>(null);
   const [existingProperty, setExistingProperty] = useState<Property | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState<string>("");
   
   // Query to get the latest property (if it exists)
   const latestPropertyQuery = useQuery({
@@ -47,11 +48,14 @@ export default function PropertyInput() {
 
   const createPropertyMutation = useMutation({
     mutationFn: async (data: InsertProperty): Promise<PropertyWithAnalysis> => {
+      setLoadingStatus("Creating property...");
       const res = await apiRequest("POST", "/api/properties", data);
+      setLoadingStatus("Property created! Finding your listing...");
       return res.json();
     },
     onSuccess: (data) => {
       setResult(data);
+      setLoadingStatus("Discovering competitors...");
       // Automatically start scraping after property creation
       startScrapingMutation.mutate(data.property.id);
     },
@@ -75,13 +79,16 @@ export default function PropertyInput() {
 
   const startScrapingMutation = useMutation({
     mutationFn: async (propertyId: string): Promise<ScrapingResult> => {
+      setLoadingStatus("Scraping competitor properties...");
       const res = await apiRequest("POST", `/api/properties/${propertyId}/scrape`, {});
+      setLoadingStatus("Competitors discovered!");
       return res.json();
     },
     onSuccess: (data) => {
       setScrapingResult(data);
+      setLoadingStatus("");
       toast({
-        title: "Scraping Started",
+        title: "Discovery Complete",
         description: data.message,
       });
     },
@@ -124,6 +131,20 @@ export default function PropertyInput() {
 
   return (
     <div className="space-y-6" data-testid="property-input-page">
+      {loadingStatus && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+              <div>
+                <p className="font-medium text-blue-900">{loadingStatus}</p>
+                <p className="text-sm text-blue-700">This usually takes 5-10 seconds...</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
       <PropertyForm 
         onSubmit={handleSubmit}
         isLoading={createPropertyMutation.isPending}
