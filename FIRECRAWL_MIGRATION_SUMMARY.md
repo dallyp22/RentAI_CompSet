@@ -277,8 +277,8 @@ Added:
 Add to your deployment environment (already in `.env` for local):
 
 ```bash
-FIRECRAWL_API_KEY=fc-ebc3a25a074f4464b39470228e2a9ac8
-OPENAI_API_KEY=sk-proj-vFtN_pR8UKzCv0TtvW9o...
+FIRECRAWL_API_KEY=your_firecrawl_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 ### NPM Dependencies
