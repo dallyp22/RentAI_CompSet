@@ -2022,7 +2022,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       
       // Background job - continues after response is sent
       const scrapingJobId = scrapingJob.id;
-      setImmediate(async () => {
+      setTimeout(async () => {
         try {
           const urls = [`https://www.${cityUrl}`];
           console.log(`[SCRAPE_BACKGROUND] Starting competitor discovery:`, urls[0]);
@@ -2195,7 +2195,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             completedAt: new Date()
           });
         }
-      })();
+      }, 0); // Run immediately but don't block response
       
     } catch (error) {
       console.error("Firecrawl API error:", error);
