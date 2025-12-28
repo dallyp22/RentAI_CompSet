@@ -98,18 +98,22 @@ async function discoverProperties(cityUrl: string): Promise<PropertyListing[]> {
     return cached;
   }
   
-  const prompt = `Extract all apartment property listings from this apartments.com search results page. 
+  const prompt = `Extract ALL apartment property listings from this apartments.com search page. 
   
-For EACH property listing card/result, extract:
-- url: The complete URL link to the property's detail page (must start with https://www.apartments.com/ and go to the specific property)
-- name: The property name/title shown on the listing
-- address: The full street address shown (e.g., "123 Main St, Omaha, NE 68131")
+IMPORTANT: Look in the main listing grid/container (usually id="placardContainer" or similar).
 
-IMPORTANT: 
-- Extract the ACTUAL street address, not just city/state
-- If no street address is shown on the listing, extract whatever location info is available
-- Look for addresses in the listing card, property title, or property description
-- Return ALL property listings found on the page`;
+For EACH property listing placard/card, extract:
+- url: The clickable link to the property's detail page (example: https://www.apartments.com/the-atlas-omaha-ne/abc123/)
+- name: The property name shown prominently in the listing
+- address: Any address or location text shown (street address, or just city/state if that's all available)
+
+Extract EVERY listing on the page, including:
+- Properties at the top of results
+- Properties in the middle
+- Properties at the bottom
+- All visible property cards
+
+Return a comprehensive list of ALL properties found.`;
 
   const schema = {
     type: "object",

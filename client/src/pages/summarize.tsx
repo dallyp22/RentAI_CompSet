@@ -96,6 +96,7 @@ export default function Summarize({ params }: { params: { id: string } }) {
 
   const competitorsQuery = useQuery<ScrapedProperty[]>({
     queryKey: ['/api/competitors'],
+    refetchInterval: 5000, // Auto-refresh every 5 seconds to catch new data
   });
 
   // Load workflow state on mount and restore selections
