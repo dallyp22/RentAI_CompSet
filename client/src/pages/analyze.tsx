@@ -27,7 +27,14 @@ export default function Analyze({ params }: { params: { id: string } }) {
   // Mutation for filtered analysis
   const analysisMutation = useMutation({
     mutationFn: async (filterCriteria: FilterCriteria): Promise<FilteredAnalysis> => {
-      const response = await apiRequest('POST', '/api/filtered-analysis', filterCriteria);
+      // Include property ID and selected competitors in the request
+      const requestData = {
+        ...filterCriteria,
+        propertyId: params.id,
+        selectedCompetitorIds: workflowState?.selectedCompetitorIds || []
+      };
+      console.log('[ANALYZE] Sending filtered analysis request:', requestData);
+      const response = await apiRequest('POST', '/api/filtered-analysis', requestData);
       return response.json();
     },
     onSuccess: (data: FilteredAnalysis) => {
