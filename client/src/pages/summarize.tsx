@@ -329,6 +329,70 @@ export default function Summarize({ params }: { params: { id: string } }) {
 
   return (
     <div className="space-y-6" data-testid="summarize-page">
+      {/* Scraping Status - ALWAYS VISIBLE AT TOP */}
+      {discoveryProgress.isSearching && (
+        <Card className="border-blue-500 bg-blue-50 shadow-lg">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <div className="flex-1">
+                <p className="text-xl font-bold text-blue-900">
+                  🔍 Discovering Competitor Properties...
+                </p>
+                <p className="text-sm text-blue-700 mt-1">
+                  Scraping apartments.com in your area. Please wait ~30-60 seconds.
+                </p>
+                <div className="mt-3 bg-blue-100 rounded-full h-2 overflow-hidden">
+                  <div className="h-full bg-blue-600 animate-pulse" style={{width: '60%'}}></div>
+                </div>
+                <p className="text-xs text-blue-600 mt-2 font-semibold">
+                  This page will update automatically when competitors are found!
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {discoveryProgress.status === 'completed' && competitors.length > 0 && (
+        <Card className="border-green-500 bg-green-50 shadow-lg">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+              <div className="flex-1">
+                <p className="text-xl font-bold text-green-900">
+                  ✅ Discovery Complete! Found {competitors.length} Properties
+                </p>
+                <p className="text-sm text-green-700 mt-1">
+                  Select up to 5 competitors below to compare with your property
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {competitors.length === 0 && !discoveryProgress.isSearching && (
+        <Card className="border-yellow-500 bg-yellow-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <AlertCircle className="h-8 w-8 text-yellow-600" />
+              <div className="flex-1">
+                <p className="text-lg font-bold text-yellow-900">
+                  ⏳ Waiting for Competitor Data...
+                </p>
+                <p className="text-sm text-yellow-700 mt-1">
+                  Background scraping is in progress. This page will refresh automatically.
+                </p>
+                <p className="text-xs text-yellow-600 mt-2">
+                  If nothing appears after 2 minutes, try refreshing the page.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Subject Property Card */}
       {propertyQuery.data && (
         <Card data-testid="subject-property-card">
