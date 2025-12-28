@@ -250,9 +250,10 @@ export class PostgresStorage implements IStorage {
   }
 
   async clearScrapedPropertiesCache(): Promise<void> {
-    await this.db.delete(scrapedProperties);
-    await this.db.delete(scrapedUnits);
-    await this.db.delete(scrapingJobs);
+    // Delete in correct order due to foreign key constraints
+    await this.db.delete(scrapedUnits); // Child table first
+    await this.db.delete(scrapedProperties); // Parent table second
+    await this.db.delete(scrapingJobs); // Independent table last
   }
 
   async getOriginalPropertyIdFromScraped(scrapedPropertyId: string): Promise<string | null> {
