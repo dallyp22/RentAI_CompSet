@@ -82,6 +82,11 @@ export default function Summarize({ params }: { params: { id: string } }) {
   const [scrapingStage, setScrapingStage] = useState<'none' | 'scraping' | 'completed' | 'error'>('none');
   const [scrapingResults, setScrapingResults] = useState<ScrapingResult[]>([]);
   const [showVacancyChart, setShowVacancyChart] = useState(false);
+  const [discoveryProgress, setDiscoveryProgress] = useState<{
+    status: string;
+    propertiesFound: number;
+    isSearching: boolean;
+  }>({ status: 'idle', propertiesFound: 0, isSearching: false });
   const { toast } = useToast();
   const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(params.id);
 
