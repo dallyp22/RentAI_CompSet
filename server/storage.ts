@@ -312,19 +312,39 @@ export class PostgresStorage implements IStorage {
   }
 
   async generateFilteredAnalysis(propertyId: string, criteria: FilterCriteria): Promise<FilteredAnalysis> {
+    console.log('[POSTGRES_ANALYSIS] Generating analysis for property:', propertyId);
+    console.log('[POSTGRES_ANALYSIS] Filter criteria:', criteria);
+    
     // Get subject property and units
     const subjectProperty = await this.getSubjectScrapedProperty();
     const subjectUnits = subjectProperty ? await this.getScrapedUnitsByProperty(subjectProperty.id) : [];
     
-    // Get competitor units
-    const competitors = await this.getAllScrapedCompetitors();
-    const competitorUnits = await this.getFilteredScrapedUnits(criteria);
+    console.log('[POSTGRES_ANALYSIS] Subject property:', subjectProperty?.name);
+    console.log('[POSTGRES_ANALYSIS] Subject units found:', subjectUnits.length);
     
-    // Calculate analysis metrics (simplified)
-    const avgRent = competitorUnits.length > 0
-      ? competitorUnits.reduce((sum, u) => sum + (parseFloat(u.rent?.toString() || '0')), 0) / competitorUnits.length
+    // Get ALL competitor units (unfiltered first)
+    const competitors = await this.getAllScrapedCompetitors();
+    console.log('[POSTGRES_ANALYSIS] Competitors found:', competitors.length);
+    
+    // Get all competitor units
+    let allCompetitorUnits: any[] = [];
+    for (const comp of competitors) {
+      const units = await this.getScrapedUnitsByProperty(comp.id);
+      allCompetitorUnits.push(...units);
+    }
+    
+    console.log('[POSTGRES_ANALYSIS] Total competitor units before filtering:', allCompetitorUnits.length);
+    
+    // Apply filters to competitor units
+    const filteredCompetitorUnits = await this.getFilteredScrapedUnits(criteria);
+    console.log('[POSTGRES_ANALYSIS] Competitor units after filtering:', filteredCompetitorUnits.length);
+    
+    // Calculate metrics
+    const avgRent = filteredCompetitorUnits.length > 0
+      ? filteredCompetitorUnits.reduce((sum, u) => sum + (parseFloat(u.rent?.toString() || '0')), 0) / filteredCompetitorUnits.length
       : 0;
 
+    // Return REAL data, not empty arrays!
     return {
       marketPosition: "Market analysis based on filtered criteria",
       pricingPowerScore: 75,
@@ -336,8 +356,28 @@ export class PostgresStorage implements IStorage {
       locationScore: 75,
       amenityScore: 75,
       pricePerSqFt: 2.5,
-      subjectUnits: [],
-      competitorUnits: [],
+      subjectUnits: subjectUnits.map(u => ({
+        unitId: u.id,
+        propertyName: subjectProperty?.name || 'Subject',
+        unitType: u.unitType,
+        bedrooms: u.bedrooms || 0,
+        bathrooms: u.bathrooms ? parseFloat(u.bathrooms.toString()) : null,
+        squareFootage: u.squareFootage || null,
+        rent: parseFloat(u.rent?.toString() || '0'),
+        isSubject: true,
+        availabilityDate: u.availabilityDate || undefined
+      })),
+      competitorUnits: filteredCompetitorUnits.map(u => ({
+        unitId: u.id,
+        propertyName: 'Competitor', // Would need to join with property to get name
+        unitType: u.unitType,
+        bedrooms: u.bedrooms || 0,
+        bathrooms: u.bathrooms ? parseFloat(u.bathrooms.toString()) : null,
+        squareFootage: u.squareFootage || null,
+        rent: parseFloat(u.rent?.toString() || '0'),
+        isSubject: false,
+        availabilityDate: u.availabilityDate || undefined
+      })),
       competitiveEdges: {
         pricing: { edge: 0, label: "At market", status: "neutral" as const },
         size: { edge: 0, label: "Average size", status: "neutral" as const },
