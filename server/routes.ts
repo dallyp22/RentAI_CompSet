@@ -87,7 +87,7 @@ async function callFirecrawlScrape(
 }
 
 /**
- * Discover property listings from apartments.com search page
+ * Discover property listings from a rental search page
  */
 async function discoverProperties(cityUrl: string): Promise<PropertyListing[]> {
   // Check cache first
@@ -97,21 +97,15 @@ async function discoverProperties(cityUrl: string): Promise<PropertyListing[]> {
     console.log(`🔥 [FIRECRAWL] Using cached properties for ${cityUrl}`);
     return cached;
   }
-  
-  const prompt = `Extract ALL apartment property listings from this apartments.com search page. 
-  
-IMPORTANT: Look in the main listing grid/container (usually id="placardContainer" or similar).
 
-For EACH property listing placard/card, extract:
-- url: The clickable link to the property's detail page (example: https://www.apartments.com/the-atlas-omaha-ne/abc123/)
-- name: The property name shown prominently in the listing
-- address: Any address or location text shown (street address, or just city/state if that's all available)
+  const prompt = `Extract ALL apartment/rental property listings from this search results page.
 
-Extract EVERY listing on the page, including:
-- Properties at the top of results
-- Properties in the middle
-- Properties at the bottom
-- All visible property cards
+For EACH property listing card or result, extract:
+- url: The clickable link to the property's detail/listing page (full URL)
+- name: The property name shown in the listing
+- address: Any address or location text shown (street address, city/state, or best available)
+
+Extract EVERY listing on the page — from top to bottom, including all visible property cards, search results, and listings.
 
 Return a comprehensive list of ALL properties found.`;
 
@@ -123,15 +117,15 @@ Return a comprehensive list of ALL properties found.`;
         items: {
           type: "object",
           properties: {
-            url: { 
+            url: {
               type: "string",
-              description: "Full URL to property detail page on apartments.com"
+              description: "Full URL to the property detail/listing page"
             },
-            name: { 
+            name: {
               type: "string",
               description: "Property name or title"
             },
-            address: { 
+            address: {
               type: "string",
               description: "Street address with city and state, or best available location info"
             }
@@ -145,41 +139,59 @@ Return a comprehensive list of ALL properties found.`;
 
   const result = await callFirecrawlScrape(cityUrl, prompt, schema);
   const properties = result.properties || [];
-  
+
   console.log(`🔥 [FIRECRAWL] Found ${properties.length} properties`);
   console.log(`🔥 [FIRECRAWL] Sample property:`, properties[0]);
-  
-  // Filter and validate - address is now optional since listings may not show full addresses
-  const validProperties = properties.filter((prop: PropertyListing) => 
-    prop.url && 
-    prop.url.includes('apartments.com') &&
+
+  // Filter and validate - accept any valid URL with a name
+  const validProperties = properties.filter((prop: PropertyListing) =>
+    prop.url &&
+    prop.url.startsWith('http') &&
     prop.name
   ).map(prop => ({
     ...prop,
-    address: prop.address || 'Address to be determined' // Provide default if missing
+    address: prop.address || 'Address to be determined'
   }));
-  
+
   // Cache the results
   cache.set(cacheKey, validProperties);
-  
+
   return validProperties;
+}
+
+/**
+ * Infer unit type from bedroom/bathroom counts
+ */
+function inferUnitType(unit: { bedrooms?: number; bathrooms?: number; unitType?: string; floorPlanName?: string }): string {
+  if (unit.unitType) return unit.unitType;
+
+  const beds = unit.bedrooms;
+  const baths = unit.bathrooms;
+
+  if (beds === 0 || (unit.floorPlanName && /studio/i.test(unit.floorPlanName))) return "Studio";
+  if (beds != null && baths != null) return `${beds}BR/${baths}BA`;
+  if (beds != null) return `${beds}BR`;
+
+  return "Unknown";
 }
 
 /**
  * Extract unit details from property page
  */
 async function extractUnitDetails(propertyUrl: string): Promise<UnitDetails[]> {
-  const prompt = `Extract all available apartment units from this property page. For each unit:
-- unitNumber: The unit identifier (like "1-332", "A101") if shown
-- floorPlanName: The marketing name (like "New York", "Portland") if shown  
-- unitType: Unit type (e.g., "Studio", "1BR/1BA", "2BR/2BA") - REQUIRED
-- bedrooms: Number of bedrooms as integer
+  const prompt = `Extract ALL apartment/rental units listed on this property page. Include every unit, floor plan, or listing you can find — whether available, occupied, or waitlisted.
+
+For each unit extract:
+- unitNumber: The unit identifier (like "1-332", "A101", "#204") if shown
+- floorPlanName: The floor plan or marketing name (like "The Loft", "Plan A") if shown
+- unitType: The unit type such as "Studio", "1BR/1BA", "2BR/2BA", "3BR/2BA". Derive from bedroom/bathroom counts if not explicitly labeled.
+- bedrooms: Number of bedrooms as integer (0 for studio)
 - bathrooms: Number of bathrooms as decimal (1.0, 1.5, 2.0)
 - squareFootage: Square footage as integer
-- rent: Monthly rent as number (no $ symbol)
-- availabilityDate: When the unit is available
+- rent: Monthly rent as number (no $ symbol). Use the base/starting rent if a range is shown.
+- availabilityDate: When the unit is available, or "Available Now" if currently available
 
-Note: Extract either unitNumber OR floorPlanName, whichever is shown.`;
+Extract from ALL sections of the page: floor plans, available units, pricing tables, unit lists, etc.`;
 
   const schema = {
     type: "object",
@@ -197,8 +209,7 @@ Note: Extract either unitNumber OR floorPlanName, whichever is shown.`;
             squareFootage: { type: "number" },
             rent: { type: "number" },
             availabilityDate: { type: "string" }
-          },
-          required: ["unitType"]
+          }
         }
       }
     },
@@ -206,11 +217,24 @@ Note: Extract either unitNumber OR floorPlanName, whichever is shown.`;
   };
 
   const result = await callFirecrawlScrape(propertyUrl, prompt, schema);
-  const units = result.units || [];
-  
-  console.log(`🔥 [FIRECRAWL] Found ${units.length} units`);
-  
-  return units.filter((unit: UnitDetails) => unit.unitType);
+  const rawUnits = result.units || [];
+
+  console.log(`🔥 [FIRECRAWL] Raw units extracted: ${rawUnits.length}`);
+
+  // Enrich units: infer unitType from bedrooms/bathrooms if missing
+  const enrichedUnits = rawUnits.map((unit: UnitDetails) => ({
+    ...unit,
+    unitType: inferUnitType(unit)
+  }));
+
+  // Keep any unit that has at least some useful data (rent, sqft, or bedrooms)
+  const validUnits = enrichedUnits.filter((unit: UnitDetails) =>
+    unit.unitType && (unit.rent != null || unit.squareFootage != null || unit.bedrooms != null)
+  );
+
+  console.log(`🔥 [FIRECRAWL] Valid units after enrichment: ${validUnits.length} (${rawUnits.length - validUnits.length} dropped)`);
+
+  return validUnits;
 }
 
 /**
@@ -254,7 +278,7 @@ async function findSubjectPropertyWithSearch(
     const { city, state } = parseCityStateFromAddress(address);
     
     // Use Firecrawl Search to find the exact listing
-    const searchQuery = `${propertyName} apartments ${city} ${state} site:apartments.com`;
+    const searchQuery = `${propertyName} apartments ${city} ${state}`;
     
     console.log(`🔍 [FIRECRAWL_SEARCH] Query: ${searchQuery}`);
     
@@ -281,9 +305,11 @@ async function findSubjectPropertyWithSearch(
     
     console.log(`🔍 [FIRECRAWL_SEARCH] Found ${results.length} results`);
     
-    // Find best match from search results
+    // Find best match from search results — prefer rental listing sites
+    const rentalDomains = ['apartments.com', 'zillow.com', 'rent.com', 'realtor.com', 'trulia.com', 'rentcafe.com', 'apartmentfinder.com'];
+
     for (const item of results) {
-      if (item.url && item.url.includes('apartments.com')) {
+      if (item.url && rentalDomains.some(domain => item.url.includes(domain))) {
         console.log(`✅ [FIRECRAWL_SEARCH] Found: ${item.title} - ${item.url}`);
         return {
           url: item.url,
@@ -292,8 +318,18 @@ async function findSubjectPropertyWithSearch(
         };
       }
     }
-    
-    console.log(`⚠️ [FIRECRAWL_SEARCH] No apartments.com listing found`);
+
+    // Fallback: return first result with a valid URL
+    if (results.length > 0 && results[0].url) {
+      console.log(`⚠️ [FIRECRAWL_SEARCH] No rental site match, using first result: ${results[0].url}`);
+      return {
+        url: results[0].url,
+        name: results[0].title || propertyName,
+        address: results[0].description || address
+      };
+    }
+
+    console.log(`⚠️ [FIRECRAWL_SEARCH] No listings found`);
     return null;
   } catch (error) {
     console.error(`❌ [FIRECRAWL_SEARCH] Error:`, error);
@@ -630,11 +666,11 @@ Please provide your analysis in this exact JSON format:
         });
       }
       
-      // Verify this is real scraped data by checking for apartments.com URLs
-      const realScrapedCount = scrapedCompetitors.filter(c => 
-        c.url && c.url.includes('apartments.com')
+      // Verify this is real scraped data by checking for valid URLs
+      const realScrapedCount = scrapedCompetitors.filter(c =>
+        c.url && c.url.startsWith('http')
       ).length;
-      console.log('[GET_COMPETITORS] Properties with valid apartments.com URLs:', realScrapedCount);
+      console.log('[GET_COMPETITORS] Properties with valid URLs:', realScrapedCount);
       
       if (scrapedCompetitors.length === 0) {
         console.log('[GET_COMPETITORS] ⚠️ No competitor properties found');
